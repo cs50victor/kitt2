@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["lkgpt-service", "crates/*"]
+
+package.rust-version = "1.74.0"
+
+[profile.dev]
+opt-level = 3 # All optimizations
+
+[profile.release]
+opt-level = "z"   # Optimize for binanry size.
+lto = true        # Enable link-time optimization.
+codegen-units = 1 # Only use one codegen unit, to imcrease optimization.
+panic = "abort"   # Abort on panic, instead of unwinding the stack.
+
+[profile.prod]
+inherits = "release"
+strip = true         # Automatically strip symbols from the binary.
