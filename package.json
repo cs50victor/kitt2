@@ -1,0 +1,16 @@
+{
+  "name": "kitt_2",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently --names 'WEB,SERVER' -c 'auto' \"pnpm --dir=meet dev\" \"cargo rr --bin lkgpt\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
