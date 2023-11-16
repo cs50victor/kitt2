@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["lkgpt-service", "crates/*"]
+members = ["lkgpt-service", "engine_livekit"]
 
 package.rust-version = "1.74.0"
 
