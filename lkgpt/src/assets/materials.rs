@@ -150,44 +150,61 @@ impl MeshMaterial {
 }
 
 pub fn get_material_data(material: gltf::Material) -> MeshMaterial {
-    let name = material.name().map_or("UnNamed".to_string(), |name| name.to_string());
+    let name = material
+        .name()
+        .map_or("UnNamed".to_string(), |name| name.to_string());
 
     let pbr_metallic = material.pbr_metallic_roughness();
     // ----
     let alpha_cutoff = material.alpha_cutoff();
     let alpha_mode = material.alpha_mode();
     let base_color_factor = pbr_metallic.base_color_factor();
-    let base_color_texture_index =
-        pbr_metallic.base_color_texture().map(|info| info.texture().index() as u8);
+    let base_color_texture_index = pbr_metallic
+        .base_color_texture()
+        .map(|info| info.texture().index() as u8);
     let double_sided = material.double_sided();
     let emissive_factor = material.emissive_factor();
-    let emissive_texture_index =
-        material.emissive_texture().map(|info| info.texture().index() as u8);
+    let emissive_texture_index = material
+        .emissive_texture()
+        .map(|info| info.texture().index() as u8);
     let ior = material.ior();
-    let metallic_roughness_texture_index =
-        pbr_metallic.metallic_roughness_texture().map(|info| info.texture().index() as u8);
-    let normal_texture_index =
-        material.normal_texture().map(|normal| normal.texture().index() as u8);
-    let occlusion_texture_index =
-        material.occlusion_texture().map(|occlusion| occlusion.texture().index() as u8);
+    let metallic_roughness_texture_index = pbr_metallic
+        .metallic_roughness_texture()
+        .map(|info| info.texture().index() as u8);
+    let normal_texture_index = material
+        .normal_texture()
+        .map(|normal| normal.texture().index() as u8);
+    let occlusion_texture_index = material
+        .occlusion_texture()
+        .map(|occlusion| occlusion.texture().index() as u8);
     let (specular_color_texture_index, specular_texture_index) =
         material.specular().map_or((None, None), |specular| {
-            let specular_color_texture_index =
-                specular.specular_color_texture().map(|info| info.texture().index() as u8);
-            let specular_texture_index =
-                specular.specular_texture().map(|info| info.texture().index() as u8);
+            let specular_color_texture_index = specular
+                .specular_color_texture()
+                .map(|info| info.texture().index() as u8);
+            let specular_texture_index = specular
+                .specular_texture()
+                .map(|info| info.texture().index() as u8);
             (specular_color_texture_index, specular_texture_index)
         });
-    let (specular_diffuse_texture_index, specular_glossiness_texture_index) =
-        material.pbr_specular_glossiness().map_or((None, None), |pbr_gloss| {
-            let specular_diffuse_texture_index =
-                pbr_gloss.diffuse_texture().map(|info| info.texture().index() as u8);
-            let specular_glossiness_texture_index =
-                pbr_gloss.specular_glossiness_texture().map(|info| info.texture().index() as u8);
-            (specular_diffuse_texture_index, specular_glossiness_texture_index)
+    let (specular_diffuse_texture_index, specular_glossiness_texture_index) = material
+        .pbr_specular_glossiness()
+        .map_or((None, None), |pbr_gloss| {
+            let specular_diffuse_texture_index = pbr_gloss
+                .diffuse_texture()
+                .map(|info| info.texture().index() as u8);
+            let specular_glossiness_texture_index = pbr_gloss
+                .specular_glossiness_texture()
+                .map(|info| info.texture().index() as u8);
+            (
+                specular_diffuse_texture_index,
+                specular_glossiness_texture_index,
+            )
         });
     let transmission_texture_index = material.transmission().and_then(|transmission| {
-        transmission.transmission_texture().map(|info| info.texture().index() as u8)
+        transmission
+            .transmission_texture()
+            .map(|info| info.texture().index() as u8)
     });
     let unlit = material.unlit();
     let (
@@ -196,8 +213,9 @@ pub fn get_material_data(material: gltf::Material) -> MeshMaterial {
         vol_attenuation_distance,
         vol_attenuation_color,
     ) = material.volume().map_or((None, None, None, None), |tex| {
-        let vol_thickness_texture_index =
-            tex.thickness_texture().map(|tex| tex.texture().index() as u8);
+        let vol_thickness_texture_index = tex
+            .thickness_texture()
+            .map(|tex| tex.texture().index() as u8);
         let vol_thickness_factor = tex.thickness_factor();
         let vol_attenuation_distance = tex.attenuation_distance();
         let vol_attenuation_color = tex.attenuation_color();

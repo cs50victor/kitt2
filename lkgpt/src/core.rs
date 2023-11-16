@@ -74,7 +74,9 @@ impl Engine {
 
         // queues are used to submit work to the device. They are created along with the device.
         // they are somewhat like the GPU equivalent of CPU threads.
-        let gfx_queue = queues.next().expect("failed to get first queue in iterator");
+        let gfx_queue = queues
+            .next()
+            .expect("failed to get first queue in iterator");
 
         Ok(Self {
             vkdevice,
@@ -130,8 +132,17 @@ impl Engine {
             .enumerate_physical_devices()
             .expect("could not enumerate devices")
             .filter(|p| {
-                let Properties { device_name, device_type, .. } = &p.properties();
-                info!("- {} | {:?} | Vulkan v{:?}", device_name, device_type, p.api_version());
+                let Properties {
+                    device_name,
+                    device_type,
+                    ..
+                } = &p.properties();
+                info!(
+                    "- {} | {:?} | Vulkan v{:?}",
+                    device_name,
+                    device_type,
+                    p.api_version()
+                );
                 p.api_version() >= Version::V1_3 || p.supported_extensions().khr_dynamic_rendering
             })
             .filter(|p| p.supported_extensions().contains(device_extensions))

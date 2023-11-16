@@ -44,15 +44,20 @@ pub fn load_external_gltf(
         .buffers()
         .map(|buffer| {
             let mut data = match buffer.source() {
-                buffer::Source::Bin => {
-                    gltf.blob.as_deref().context("Failed to open gltf blob")?.to_vec()
-                },
+                buffer::Source::Bin => gltf
+                    .blob
+                    .as_deref()
+                    .context("Failed to open gltf blob")?
+                    .to_vec(),
                 buffer::Source::Uri(uri) => {
-                    let uri = full_path.parent().unwrap_or_else(|| Path::new("./")).join(uri);
+                    let uri = full_path
+                        .parent()
+                        .unwrap_or_else(|| Path::new("./"))
+                        .join(uri);
                     let uri_display = uri.display().to_string();
                     fs::read(uri)
                         .with_context(|| format!("Failed to read buffer uri: {}", uri_display))?
-                },
+                }
             };
             if data.len() < buffer.length() {
                 bail!(
@@ -90,7 +95,11 @@ pub fn load_external_gltf(
                     .to_rgba8();
 
                 let (width, height) = image.dimensions();
-                let dimensions = ImageDimensions::Dim2d { width, height, array_layers: 1 };
+                let dimensions = ImageDimensions::Dim2d {
+                    width,
+                    height,
+                    array_layers: 1,
+                };
 
                 let image_data = image.into_raw();
                 let image = ImmutableImage::from_iter(
@@ -104,12 +113,15 @@ pub fn load_external_gltf(
                 let image_view = ImageView::new_default(image)?;
 
                 Ok(Texture { image_view })
-            },
+            }
             _ => bail!("Only external images textures are supported"),
         })
         .collect::<Result<Vec<_>>>()?;
 
-    let materials = gltf.materials().map(materials::get_material_data).collect::<Vec<_>>();
+    let materials = gltf
+        .materials()
+        .map(materials::get_material_data)
+        .collect::<Vec<_>>();
 
     let meshes = gltf
         .meshes()
@@ -121,15 +133,17 @@ pub fn load_external_gltf(
 
                     let reader = mesh_primitive.reader(|buffer| Some(&buffer_data[buffer.index()]));
 
-                    let normals =
-                        reader.read_normals().map_or(Vec::new(), |normals| normals.collect());
+                    let normals = reader
+                        .read_normals()
+                        .map_or(Vec::new(), |normals| normals.collect());
 
                     let colors = reader
                         .read_colors(0)
                         .map_or(Vec::new(), |colors| colors.into_rgba_f32().collect());
 
-                    let tangents =
-                        reader.read_tangents().map_or(Vec::new(), |tangents| tangents.collect());
+                    let tangents = reader
+                        .read_tangents()
+                        .map_or(Vec::new(), |tangents| tangents.collect());
 
                     let tex_coords = reader
                         .read_tex_coords(0)
@@ -143,15 +157,21 @@ pub fn load_external_gltf(
                         positions
                             .enumerate()
                             .map(|(i, position)| {
-                                let normal =
-                                    if i >= normals_len { Default::default() } else { normals[i] };
+                                let normal = if i >= normals_len {
+                                    Default::default()
+                                } else {
+                                    normals[i]
+                                };
                                 let tex_coords = if i >= tex_coords_len {
                                     Default::default()
                                 } else {
                                     tex_coords[i]
                                 };
-                                let color =
-                                    if i >= colors_len { Default::default() } else { colors[i] };
+                                let color = if i >= colors_len {
+                                    Default::default()
+                                } else {
+                                    colors[i]
+                                };
                                 let tangent = if i >= tangents_len {
                                     Default::default()
                                 } else {
@@ -170,8 +190,9 @@ pub fn load_external_gltf(
                             .collect()
                     });
 
-                    let indices =
-                        reader.read_indices().map_or(Vec::new(), |i| i.into_u32().collect());
+                    let indices = reader
+                        .read_indices()
+                        .map_or(Vec::new(), |i| i.into_u32().collect());
 
                     Mesh::new(memory_allocator, vertices, indices, material_index).with_context(
                         || {
@@ -186,5 +207,10 @@ pub fn load_external_gltf(
         })
         .collect::<Result<Vec<_>>>()?;
 
-    Ok(Model { meshes, transforms: vec![Mat4::IDENTITY], textures, materials })
+    Ok(Model {
+        meshes,
+        transforms: vec![Mat4::IDENTITY],
+        textures,
+        materials,
+    })
 }

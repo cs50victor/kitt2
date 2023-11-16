@@ -15,7 +15,10 @@ impl Default for OrderedTexturesMap {
 
 impl OrderedTexturesMap {
     pub fn new() -> Self {
-        OrderedTexturesMap { map: HashMap::new(), keys: Vec::new() }
+        OrderedTexturesMap {
+            map: HashMap::new(),
+            keys: Vec::new(),
+        }
     }
 
     pub fn insert(&mut self, key: u8, value: Texture) {
@@ -30,7 +33,9 @@ impl OrderedTexturesMap {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&u8, &Texture)> {
-        self.keys.iter().filter_map(move |k| self.map.get_key_value(k))
+        self.keys
+            .iter()
+            .filter_map(move |k| self.map.get_key_value(k))
     }
 
     pub fn len(&self) -> u8 {

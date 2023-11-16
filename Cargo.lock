@@ -909,30 +909,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "engine_livekit"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-openai",
- "chrono",
- "futures",
- "glam",
- "gltf",
- "image",
- "livekit",
- "log",
- "parking_lot",
- "png",
- "serde",
- "serde_json",
- "tokio",
- "tokio-tungstenite",
- "vulkano",
- "vulkano-shaders",
- "whisper-rs",
-]
-
-[[package]]
 name = "env_logger"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1756,16 +1732,27 @@ version = "0.0.1"
 dependencies = [
  "actix-web",
  "anyhow",
+ "async-openai",
+ "chrono",
  "dotenvy",
- "engine_livekit",
+ "futures",
+ "glam",
+ "gltf",
+ "image",
  "livekit",
  "livekit-api",
  "livekit-protocol",
  "log",
  "parking_lot",
+ "png",
  "pretty_env_logger",
  "serde",
+ "serde_json",
  "tokio",
+ "tokio-tungstenite",
+ "vulkano",
+ "vulkano-shaders",
+ "whisper-rs",
 ]
 
 [[package]]
@@ -2514,9 +2501,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.21.8"
+version = "0.21.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "446e14c5cda4f3f30fe71863c34ec70f5ac79d6087097ad0bb433e1be5edf04c"
+checksum = "629648aced5775d558af50b2b4c7b02983a04b312126d45eeead26e7caa498b9"
 dependencies = [
  "log",
  "ring",
@@ -3673,9 +3660,9 @@ dependencies = [
 
 [[package]]
 name = "zeroize"
-version = "1.6.1"
+version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12a3946ecfc929b583800f4629b6c25b88ac6e92a40ea5670f77112a85d40a8b"
+checksum = "525b4ec142c6b68a2d10f01f7bbf6755599ca3f81ea53b8431b7dd348f5fdb2d"
 
 [[package]]
 name = "zip"

@@ -46,7 +46,9 @@ impl Node {
                 model.textures.iter().for_each(|texture| {
                     // TODO: use a better texture id/key
                     // what happens if textures are the same? how do we update the material index to the correct one?
-                    scene.all_textures.insert(curr_scene_textures_len, texture.to_owned());
+                    scene
+                        .all_textures
+                        .insert(curr_scene_textures_len, texture.to_owned());
                     curr_scene_textures_len += 1;
                 });
 
@@ -56,7 +58,9 @@ impl Node {
 
                 model.materials.iter_mut().for_each(|material| {
                     material.update_texture_indexs(prev_scene_textures_len);
-                    scene.all_materials.insert(curr_scene_materials_len, material.to_owned());
+                    scene
+                        .all_materials
+                        .insert(curr_scene_materials_len, material.to_owned());
                     curr_scene_materials_len += 1;
                 });
             }

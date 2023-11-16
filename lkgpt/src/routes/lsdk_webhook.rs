@@ -5,6 +5,7 @@ use crate::{
     response::{CommonResponses, ServerMsg},
     state::ServerStateMutex,
     utils,
+    webrtc::TurboLivekitConnector,
 };
 use livekit as lsdk;
 use livekit_api::{
@@ -48,8 +49,12 @@ pub async fn handler(
 
     if event.room.is_some() && event.event == "room_started" {
         info!("ROOM STARTED 🎉");
-        let livekit_protocol::Room { name: room_name, max_participants, num_participants, .. } =
-            event.room.unwrap();
+        let livekit_protocol::Room {
+            name: room_name,
+            max_participants,
+            num_participants,
+            ..
+        } = event.room.unwrap();
         if num_participants < max_participants {
             let lvkt_url = std::env::var("LIVEKIT_WS_URL").expect("LIVEKIT_WS_URL is not set");
             let lvkt_token = match utils::create_bot_token(room_name, BOT_NAME) {
@@ -60,7 +65,9 @@ pub async fn handler(
             let (room, room_events) = match lsdk::Room::connect(
                 &lvkt_url,
                 &lvkt_token,
-                lsdk::RoomOptions { ..Default::default() },
+                lsdk::RoomOptions {
+                    ..Default::default()
+                },
             )
             .await
             {
@@ -72,13 +79,10 @@ pub async fn handler(
 
             info!("Established connection with room. ID -> [{}]", room.name());
 
-            let mut turbo_webrtc =
-                match engine_livekit::TurboLivekitConnector::new(room, room_events).await {
-                    Ok(turbo_webrtc) => turbo_webrtc,
-                    Err(e) => {
-                        return Resp::InternalServerError().json(ServerMsg::error(e.to_string()))
-                    },
-                };
+            let mut turbo_webrtc = match TurboLivekitConnector::new(room, room_events).await {
+                Ok(turbo_webrtc) => turbo_webrtc,
+                Err(e) => return Resp::InternalServerError().json(ServerMsg::error(e.to_string())),
+            };
 
             let mut server_data = server_data.lock();
             server_data.turbo_input_tx = Some(turbo_webrtc.get_txt_input_sender());

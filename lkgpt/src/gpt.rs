@@ -24,7 +24,9 @@ pub async fn gpt(
     mut tts_client: TTS,
     to_voice_tx: tokio::sync::mpsc::UnboundedSender<String>,
 ) -> anyhow::Result<()> {
-    let splitters = ['.', ',', '?', '!', ';', ':', '—', '-', '(', ')', '[', ']', '}', ' '];
+    let splitters = [
+        '.', ',', '?', '!', ';', ':', '—', '-', '(', ')', '[', ']', '}', ' ',
+    ];
     let mut txt_buffer = String::new();
     let mut tts_buffer = String::new();
     let mut last_text_send_time = Instant::now();
@@ -45,7 +47,9 @@ pub async fn gpt(
             warn!("GPT ABOUT TO RECEIVE - {txt_buffer}");
             let request = openai_req
                 .messages([ChatCompletionRequestUserMessageArgs::default()
-                    .content(ChatCompletionRequestUserMessageContent::Text(txt_buffer.clone()))
+                    .content(ChatCompletionRequestUserMessageContent::Text(
+                        txt_buffer.clone(),
+                    ))
                     .build()?
                     .into()])
                 .build()?;
@@ -66,10 +70,10 @@ pub async fn gpt(
                                 }
                             };
                         }
-                    },
+                    }
                     Err(err) => {
                         warn!("chunk error: {err:#?}");
-                    },
+                    }
                 }
             }
             txt_buffer.clear();
