@@ -1,0 +1,21 @@
+[package]
+name = "lkgpt"
+version = "0.0.1"
+edition = "2021"
+rust-version.workspace = true
+
+[dependencies]
+actix-web = "4.4.0"
+anyhow = "1.0.75"
+dotenvy = "0.15.7"
+engine_livekit = { path = "../engine_livekit" }
+livekit = { git = "https://github.com/livekit/rust-sdks", rev = "36d7690", features = [
+  "native-tls",
+] }
+livekit-api = { git = "https://github.com/livekit/rust-sdks", rev = "36d7690" }
+livekit-protocol = { git = "https://github.com/livekit/rust-sdks", rev = "36d7690" }
+log = "0.4.20"
+parking_lot = "0.12.1"
+pretty_env_logger = "0.5.0"
+serde = { version = "1.0.188", features = ["derive"] }
+tokio = { version = "1.32.0", features = ["full"] }

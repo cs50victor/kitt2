@@ -1,5 +1,9 @@
 # KITT V2
 
+## Prerequisitise
+**Install Vulkan**
+[Vulkan Getting Started (Mac)](https://vulkan.lunarg.com/doc/sdk/1.3.268.1/mac/getting_started.html)
+
 1. `pnpm i`
 2. `pnpm dev`
 3. `ngrok http http:://localhost:4000` ( in a different terminal )

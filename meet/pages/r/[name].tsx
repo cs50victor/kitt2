@@ -76,7 +76,7 @@ const Home: NextPage = () => {
                 username: 'human',
                 videoEnabled: false,
                 audioEnabled: false,
-                e2ee: true,
+                e2ee: false,
                 sharedPassphrase: e2eePassphrase || randomString(64),
               }}
               onSubmit={handlePreJoinSubmit}
@@ -107,14 +107,13 @@ const ActiveRoom = ({ roomName, userChoices, onLeave }: ActiveRoomProps) => {
   const router = useRouter();
   const { region, hq, codec } = router.query;
 
-
-
   const liveKitUrl = useServerUrl(region as string | undefined);
 
   const worker =
     typeof window !== 'undefined' && new Worker(new URL('livekit-client/e2ee-worker', import.meta.url));
 
-  const e2eeEnabled = !!worker;
+  // const e2eeEnabled = !!worker;
+  const e2eeEnabled = false;
   const keyProvider = new ExternalE2EEKeyProvider();
 
   const roomOptions = useMemo((): RoomOptions => {
