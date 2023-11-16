@@ -104,8 +104,10 @@ impl Scene {
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-        let cmd_buffer_allocator =
-            Arc::new(StandardCommandBufferAllocator::new(device.clone(), Default::default()));
+        let cmd_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
 
         let vs = vs::load(device.clone()).expect("failed to load vertex shader");
         let fs = fs::load(device.clone()).expect("failed to load fragment shader");
@@ -133,8 +135,14 @@ impl Scene {
 
         let scene_img_buffer = Buffer::from_iter(
             &memory_allocator,
-            BufferCreateInfo { usage: BufferUsage::TRANSFER_DST, ..Default::default() },
-            AllocationCreateInfo { usage: MemoryUsage::Upload, ..Default::default() },
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
             (0..Self::DEFAULT_RESOLUTION[0] * Self::DEFAULT_RESOLUTION[1] * 4).map(|_| 0u8),
         )?;
 
@@ -165,7 +173,11 @@ impl Scene {
             .map(|_| {
                 StorageImage::new(
                     &self.memory_allocator,
-                    ImageDimensions::Dim2d { width, height, array_layers: 1 },
+                    ImageDimensions::Dim2d {
+                        width,
+                        height,
+                        array_layers: 1,
+                    },
                     Format::R8G8B8A8_UNORM,
                     Some(self.queue_family_index),
                 )
@@ -183,7 +195,11 @@ impl Scene {
     }
 
     pub fn load_gltf(&mut self, gltf_path: &str) -> Result<Model> {
-        load_external_gltf(&self.memory_allocator, &mut self.cmd_buffer_builder, gltf_path)
+        load_external_gltf(
+            &self.memory_allocator,
+            &mut self.cmd_buffer_builder,
+            gltf_path,
+        )
     }
 
     pub fn prepare_and_bind_to_cmd_buffer(
@@ -195,7 +211,7 @@ impl Scene {
             Some(cam_buffer) => cam_buffer,
             None => {
                 bail!("camera subbuffer shouldn't be None - did you forget to call update_camera?")
-            },
+            }
         };
 
         let set_zero_layout = match pipeline.layout().set_layouts().get(Self::MAIN_SET){
@@ -210,9 +226,18 @@ impl Scene {
 
         let materials_buffer = Buffer::from_iter(
             &self.memory_allocator,
-            BufferCreateInfo { usage: BufferUsage::STORAGE_BUFFER, ..Default::default() },
-            AllocationCreateInfo { usage: MemoryUsage::Upload, ..Default::default() },
-            self.all_materials.iter().map(|(_, mat)| mat.to_gpu_material()).collect::<Vec<_>>(),
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
+            self.all_materials
+                .iter()
+                .map(|(_, mat)| mat.to_gpu_material())
+                .collect::<Vec<_>>(),
         )?;
 
         let camera_and_material_set = PersistentDescriptorSet::new(
@@ -253,7 +278,8 @@ impl Scene {
             &mut self.cmd_buffer_builder,
         );
 
-        self.cmd_buffer_builder.bind_vertex_buffers(0, vertex_buffer_arr);
+        self.cmd_buffer_builder
+            .bind_vertex_buffers(0, vertex_buffer_arr);
 
         // self.cmd_buffer_builder.bind_index_buffer(Buffer::from_iter(
         //     &self.memory_allocator,
@@ -265,7 +291,9 @@ impl Scene {
         self.cmd_buffer_builder.push_constants(
             pipeline.layout().clone(),
             0,
-            vs::PushConstants { model: camera_model_matrix.to_cols_array_2d() },
+            vs::PushConstants {
+                model: camera_model_matrix.to_cols_array_2d(),
+            },
         );
 
         self.cmd_buffer_builder
@@ -362,15 +390,19 @@ impl Scene {
             .build_with_cache(self.pipeline_cache.clone())
             .vertex_input_state(MeshVertex::per_vertex())
             .vertex_shader(
-                self.vertex_shader.entry_point("main").expect("invalid vertex shader entry point"),
+                self.vertex_shader
+                    .entry_point("main")
+                    .expect("invalid vertex shader entry point"),
                 (),
             )
             .input_assembly_state(InputAssemblyState::new())
-            .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([Viewport {
-                origin: [0.0, 0.0],
-                dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                depth_range: 0.0..1.0,
-            }]))
+            .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
+                Viewport {
+                    origin: [0.0, 0.0],
+                    dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+                    depth_range: 0.0..1.0,
+                },
+            ]))
             .fragment_shader(
                 self.fragment_shader
                     .entry_point("main")
@@ -409,10 +441,11 @@ impl Scene {
 
         self.prepare_and_bind_to_cmd_buffer(pipeline, camera_model_matrix)?;
 
-        self.cmd_buffer_builder.copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(
-            self.scene_img.clone(),
-            self.scene_img_buffer.clone(),
-        ))?;
+        self.cmd_buffer_builder
+            .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(
+                self.scene_img.clone(),
+                self.scene_img_buffer.clone(),
+            ))?;
 
         let new_cmd_buffer_builder = Self::create_cmd_buffer_builder(
             self.cmd_buffer_allocator.clone(),
@@ -541,13 +574,13 @@ impl Scene {
                         Ok(_) => {
                             info!("Using pipeline cache from file");
                             Some(data)
-                        },
+                        }
                         Err(_) => {
                             info!("Failed to read pipeline cache file");
                             None
-                        },
+                        }
                     }
-                },
+                }
                 Err(_) => None,
             }
         };
@@ -573,10 +606,10 @@ impl Scene {
                         std::fs::remove_file("pipeline_cache.bin.tmp")?;
                     }
                 }
-            },
+            }
             Err(err) => {
                 bail!("Error while getting pipeline cache data: {:?}", err);
-            },
+            }
         };
         Ok(())
     }
@@ -593,7 +626,11 @@ impl Scene {
 
         Ok(StorageImage::new(
             memory_allocator,
-            ImageDimensions::Dim2d { width, height, array_layers: 1 },
+            ImageDimensions::Dim2d {
+                width,
+                height,
+                array_layers: 1,
+            },
             Format::R8G8B8A8_UNORM,
             Some(queue_family_index),
         )?)

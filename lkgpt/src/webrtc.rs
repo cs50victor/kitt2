@@ -12,7 +12,11 @@ use tokio::{
 };
 
 use crate::{
-    gpt::gpt, handle_room_events, publish_tracks, stt::STT, tts::TTS, TracksPublicationData, Turbo,
+    gpt::gpt,
+    room_events::handle_room_events,
+    track_pub::{publish_tracks, TracksPublicationData},
+    tts::TTS,
+    turbo::Turbo,
 };
 
 pub struct TurboLivekitConnector {
@@ -46,8 +50,12 @@ impl TurboLivekitConnector {
         let mut turbo = Turbo::new()?.load_basic_scene()?;
         let mut tts_client = TTS::new().await?;
 
-        let TracksPublicationData { video_pub, video_src, audio_src, audio_pub } =
-            publish_tracks(room.clone()).await?;
+        let TracksPublicationData {
+            video_pub,
+            video_src,
+            audio_src,
+            audio_pub,
+        } = publish_tracks(room.clone()).await?;
 
         let room_event_handle =
             tokio::spawn(handle_room_events(text_input_tx.clone(), room_events));
@@ -62,7 +70,13 @@ impl TurboLivekitConnector {
         // let tts_thread_handle = tokio::spawn(tts.transcribe(main_input_rx));
 
         let gpt_thread_handle = tokio::spawn(async {
-            if let Err(e) = gpt(main_input_rx, openai_client, tts_client_for_gpt, to_voice_tx).await
+            if let Err(e) = gpt(
+                main_input_rx,
+                openai_client,
+                tts_client_for_gpt,
+                to_voice_tx,
+            )
+            .await
             {
                 error!("GPT thread exited with error: {e}");
             }
@@ -92,7 +106,9 @@ impl TurboLivekitConnector {
     }
 
     pub fn get_thread_handle(&mut self) -> JoinHandle<()> {
-        self.render_thread_handle.take().expect("render thread handle should not be None")
+        self.render_thread_handle
+            .take()
+            .expect("render thread handle should not be None")
     }
 
     pub fn get_txt_input_sender(&mut self) -> tokio::sync::mpsc::UnboundedSender<String> {
@@ -103,10 +119,10 @@ impl TurboLivekitConnector {
         match self.room.close().await {
             Ok(d) => {
                 info!("Successfull closed room. {d:?}");
-            },
+            }
             Err(e) => {
                 warn!("Couldn't close livekit room. {e:?}");
-            },
+            }
         };
     }
 }

@@ -49,7 +49,10 @@ impl TTS {
 
         let bos_msg = serde_json::to_string(&BOSMessage {
             text: " ",
-            voice_settings: VoiceSettings { stability: 0.5, similarity_boost: true },
+            voice_settings: VoiceSettings {
+                stability: 0.5,
+                similarity_boost: true,
+            },
             xi_api_key: eleven_api_key.clone(),
         })?;
 
@@ -62,13 +65,19 @@ impl TTS {
         })?;
         socket.send(Message::Text(msg)).await?;
 
-        Ok(Self { socket: Arc::new(Mutex::new(socket)), eleven_labs_url, eleven_api_key })
+        Ok(Self {
+            socket: Arc::new(Mutex::new(socket)),
+            eleven_labs_url,
+            eleven_api_key,
+        })
     }
 
     pub async fn send(&mut self, msg: String) -> anyhow::Result<()> {
         let mut socket = self.socket.lock();
-        let msg =
-            serde_json::to_string(&TTSMsg { text: &(msg + " "), try_trigger_generation: true })?;
+        let msg = serde_json::to_string(&TTSMsg {
+            text: &(msg + " "),
+            try_trigger_generation: true,
+        })?;
         socket.send(Message::Text(msg)).await?;
         Ok(())
     }
@@ -80,18 +89,18 @@ impl TTS {
                 Ok(voice_base64) => match voice_base64 {
                     Message::Text(audio_base64) => {
                         info!("\n\n\n\nconvert this base64 voice stream later | {audio_base64:#?}")
-                    },
+                    }
                     Message::Close(_) => {
                         let mut self_clone = self.clone();
                         if let Err(e) = self_clone.restart_ws_connection().await {
                             error!("Coudln't restart ws connection to eleven labs {e}");
                         }
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 },
                 Err(e) => {
                     error!("\n\n\n\nvoice stream from api err {e}");
-                },
+                }
             }
         }
     }
@@ -101,7 +110,10 @@ impl TTS {
 
         let bos_msg = serde_json::to_string(&BOSMessage {
             text: " ",
-            voice_settings: VoiceSettings { stability: 0.5, similarity_boost: true },
+            voice_settings: VoiceSettings {
+                stability: 0.5,
+                similarity_boost: true,
+            },
             xi_api_key: self.eleven_api_key.clone(),
         })?;
 

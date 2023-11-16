@@ -53,11 +53,19 @@ pub async fn publish_tracks(room: Arc<Room>) -> Result<TracksPublicationData, Ro
         .local_participant()
         .publish_track(
             LocalTrack::Audio(audio_track),
-            TrackPublishOptions { source: TrackSource::Microphone, ..Default::default() },
+            TrackPublishOptions {
+                source: TrackSource::Microphone,
+                ..Default::default()
+            },
         )
         .await;
 
     let video_pub = video_publication?;
     let audio_pub = audio_publication?;
-    Ok(TracksPublicationData { video_src, video_pub, audio_src, audio_pub })
+    Ok(TracksPublicationData {
+        video_src,
+        video_pub,
+        audio_src,
+        audio_pub,
+    })
 }

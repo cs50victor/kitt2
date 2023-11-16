@@ -11,13 +11,19 @@ pub struct ServerMsg<T> {
 
 impl<T: ToString> ServerMsg<T> {
     pub fn data(data: T) -> Self {
-        Self { data: Some(data), error: None }
+        Self {
+            data: Some(data),
+            error: None,
+        }
     }
 
     pub fn error(error: T) -> Self {
         let err_msg = error.to_string();
         warn!("Server error. {err_msg:?}");
-        Self { data: None, error: Some(err_msg) }
+        Self {
+            data: None,
+            error: Some(err_msg),
+        }
     }
 }
 

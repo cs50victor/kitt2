@@ -1,3 +1,15 @@
+#![feature(ascii_char)]
+mod assets;
+mod core;
+mod gpt;
+mod room_events;
+mod scene;
+mod stt;
+mod track_pub;
+mod tts;
+mod turbo;
+mod webrtc;
+
 mod response;
 mod routes;
 mod state;
@@ -22,7 +34,6 @@ async fn main() -> std::io::Result<()> {
     pretty_env_logger::formatted_builder()
         .filter_module("actix_server", log::LevelFilter::Info)
         .filter_module("actix_web", log::LevelFilter::Info)
-        .filter_module("engine_livekit", log::LevelFilter::Info)
         .filter_module("livekit", log::LevelFilter::Info)
         .filter_module("her", log::LevelFilter::Info)
         .init();

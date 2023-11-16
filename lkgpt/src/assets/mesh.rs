@@ -40,21 +40,39 @@ impl Mesh {
     ) -> Result<Self> {
         let vertex_buffer = Buffer::from_iter(
             memory_allocator,
-            BufferCreateInfo { usage: BufferUsage::VERTEX_BUFFER, ..Default::default() },
-            AllocationCreateInfo { usage: MemoryUsage::Upload, ..Default::default() },
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
             vertices.clone(),
         )
         .context("failed to create vertex buffer")?;
 
         let index_buffer = Buffer::from_iter(
             memory_allocator,
-            BufferCreateInfo { usage: BufferUsage::INDEX_BUFFER, ..Default::default() },
-            AllocationCreateInfo { usage: MemoryUsage::Upload, ..Default::default() },
+            BufferCreateInfo {
+                usage: BufferUsage::INDEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
             indices.clone(),
         )
         .context("failed to create index buffer")?;
 
-        Ok(Self { vertex_buffer, index_buffer, vertices, indices, material_index })
+        Ok(Self {
+            vertex_buffer,
+            index_buffer,
+            vertices,
+            indices,
+            material_index,
+        })
     }
 
     pub fn num_of_indices(&self) -> u64 {
@@ -72,10 +90,12 @@ impl Mesh {
     pub fn update_material_index(&mut self, scene_material_arr_len: u8) {
         self.material_index += scene_material_arr_len;
 
-        self.vertex_buffer.write().expect("failed to write to vertex buffer").iter_mut().for_each(
-            |vertex| {
+        self.vertex_buffer
+            .write()
+            .expect("failed to write to vertex buffer")
+            .iter_mut()
+            .for_each(|vertex| {
                 vertex.material_index += scene_material_arr_len;
-            },
-        );
+            });
     }
 }

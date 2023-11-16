@@ -40,7 +40,12 @@ impl Turbo {
 
         let target_fps = 30.0_f32;
 
-        Ok(Self { engine, scene, camera, target_fps })
+        Ok(Self {
+            engine,
+            scene,
+            camera,
+            target_fps,
+        })
     }
 
     pub fn load_basic_scene(mut self) -> Result<Self> {
@@ -115,7 +120,8 @@ impl Turbo {
                     + elapsed_time.subsec_nanos() as f32 / 20_000_000_000.0,
             );
 
-            self.scene.update_camera_subbuffer_allocator(self.camera.format_to_subbuffer_data())?;
+            self.scene
+                .update_camera_subbuffer_allocator(self.camera.format_to_subbuffer_data())?;
 
             let command_buffer = self.scene.build_primary_cmd_buffer(
                 &pipeline,
@@ -193,7 +199,7 @@ fn get_user_input(input_revr: &Receiver<String>) -> Result<Option<String>> {
             std::sync::mpsc::TryRecvError::Empty => Ok(None),
             std::sync::mpsc::TryRecvError::Disconnected => {
                 bail!("Render input channel disconnected")
-            },
+            }
         },
     }
 }

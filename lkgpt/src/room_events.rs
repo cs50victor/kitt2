@@ -44,8 +44,11 @@ pub async fn handle_room_events(
 ) -> anyhow::Result<()> {
     while let Some(event) = room_events.recv().await {
         match event {
-            RoomEvent::TrackSubscribed { track, publication: _, participant: _user } => match track
-            {
+            RoomEvent::TrackSubscribed {
+                track,
+                publication: _,
+                participant: _user,
+            } => match track {
                 RemoteTrack::Audio(audio_track) => {
                     let audio_rtc_track = audio_track.rtc_track();
                     let audio_stream = NativeAudioStream::new(audio_rtc_track);
@@ -54,14 +57,18 @@ pub async fn handle_room_events(
                     //     tts_client.clone(),
                     //     audio_stream,
                     // ));
-                },
+                }
                 RemoteTrack::Video(video_track) => {
                     let video_rtc_track = video_track.rtc_track();
                     let video_stream = NativeVideoStream::new(video_rtc_track);
                     tokio::spawn(video_stream_handler(video_stream));
-                },
+                }
             },
-            RoomEvent::DataReceived { payload, kind, participant: _user } => {
+            RoomEvent::DataReceived {
+                payload,
+                kind,
+                participant: _user,
+            } => {
                 info!("Data received");
                 if kind == DataPacketKind::Reliable {
                     if let Some(payload) = payload.as_ascii() {
@@ -73,16 +80,16 @@ pub async fn handle_room_events(
                                 msg.push(' ');
                                 info!("MSG {msg}");
                                 let _ = turbo_input_tx.send(msg);
-                            },
+                            }
                             Err(e) => {
                                 warn!("Couldn't deserialize room text. {e:#?}");
-                            },
+                            }
                         }
 
                         info!("text from room {:#?}", payload.as_str());
                     }
                 }
-            },
+            }
             _ => info!("incoming event {:?}", event),
         }
     }

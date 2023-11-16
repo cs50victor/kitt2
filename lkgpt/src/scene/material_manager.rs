@@ -15,7 +15,10 @@ impl Default for OrderedMaterialsMap {
 
 impl OrderedMaterialsMap {
     pub fn new() -> Self {
-        OrderedMaterialsMap { map: HashMap::new(), keys: Vec::new() }
+        OrderedMaterialsMap {
+            map: HashMap::new(),
+            keys: Vec::new(),
+        }
     }
 
     pub fn insert(&mut self, key: u8, value: MeshMaterial) {
@@ -30,7 +33,9 @@ impl OrderedMaterialsMap {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&u8, &MeshMaterial)> {
-        self.keys.iter().filter_map(move |k| self.map.get_key_value(k))
+        self.keys
+            .iter()
+            .filter_map(move |k| self.map.get_key_value(k))
     }
 
     pub fn len(&self) -> u8 {

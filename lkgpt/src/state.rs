@@ -1,11 +1,13 @@
 use log::{error, info};
 
+use crate::webrtc::TurboLivekitConnector;
+
 pub type ServerStateMutex = parking_lot::Mutex<ServerState>;
 
 #[derive(Default)]
 pub struct ServerState {
     pub turbo_input_tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
-    pub turbo_livekit_connector_handle: Option<engine_livekit::TurboLivekitConnector>,
+    pub turbo_livekit_connector_handle: Option<TurboLivekitConnector>,
 }
 
 impl ServerState {
