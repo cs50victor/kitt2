@@ -20,7 +20,7 @@ serde = { version = "1.0.192", features = ["derive"] }
 serde_json = "1.0.108"
 tokio = { version = "1.33.0", features = ["full"] }
 
-async-openai = "0.16.2"
+async-openai = "0.16.3"
 chrono = "0.4.31"
 futures = "0.3.29"
 glam = "0.24.2"
