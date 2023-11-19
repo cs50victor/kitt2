@@ -10,14 +10,9 @@ use tokio::{
     sync::mpsc::{Receiver, UnboundedReceiver},
     task::JoinHandle,
 };
+use livekit as lsdk;
 
-use crate::{
-    gpt::gpt,
-    room_events::handle_room_events,
-    track_pub::{publish_tracks, TracksPublicationData},
-    tts::TTS,
-    turbo::Turbo,
-};
+use crate::{gpt::gpt, room_events::handle_room_events, track_pub::{publish_tracks, TracksPublicationData}, tts::TTS, turbo::Turbo, utils};
 
 pub struct TurboLivekitConnector {
     room: Arc<Room>,
@@ -32,23 +27,31 @@ pub struct TurboLivekitConnector {
     render_thread_handle: Option<JoinHandle<()>>,
 }
 
+const BOT_NAME: &str = "talking_donut";
 impl TurboLivekitConnector {
-    pub async fn new(
-        room: Arc<Room>,
-        room_events: tokio::sync::mpsc::UnboundedReceiver<livekit::RoomEvent>,
-    ) -> Result<Self> {
+    pub async fn new(participant_room_name:String) -> Result<Self> {
+        // ************** REQUIRED ENV VARS **************
+        let open_ai_org_id = std::env::var("OPENAI_ORG_ID").expect("OPENAI_ORG_ID must be");
+        let lvkt_url = std::env::var("LIVEKIT_WS_URL").expect("LIVEKIT_WS_URL is not set");
+
+        // ************** CONNECT TO ROOM **************
+        let lvkt_token = utils::create_bot_token(participant_room_name, BOT_NAME)?;
+        let room_options = lsdk::RoomOptions { ..Default::default() };
+        let (room, room_events) = lsdk::Room::connect(&lvkt_url, &lvkt_token, room_options).await?;
+        info!("Established connection with room. ID -> [{}]", room.name());
+        let room = Arc::new(room);
+
+        // ************** CREATE MESSAGING CHANNELS **************
         let (cmd_input_sender, cmd_input_receiver) = std::sync::mpsc::channel::<String>();
         let (text_input_tx, main_input_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         let (to_voice_tx, from_gpt_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
-        let open_ai_org_id = std::env::var("OPENAI_ORG_ID").expect("OPENAI_ORG_ID must be");
-
+        // ************** SETUP OPENAI, TTS, & STT **************
         let openai_client =
             OPENAI_CLIENT::with_config(OpenAIConfig::new().with_org_id(open_ai_org_id));
         // let stt_cleint = Arc::new(STT::new()?);
-
-        let mut turbo = Turbo::new()?.load_basic_scene()?;
         let mut tts_client = TTS::new().await?;
+        let mut turbo = Turbo::new()?.load_basic_scene()?;
 
         let TracksPublicationData {
             video_pub,
@@ -57,6 +60,7 @@ impl TurboLivekitConnector {
             audio_pub,
         } = publish_tracks(room.clone()).await?;
 
+        // ************** CREATE THREADS TO KICK THINGS OFF **************
         let room_event_handle =
             tokio::spawn(handle_room_events(text_input_tx.clone(), room_events));
         // stt_cleint,

@@ -43,7 +43,6 @@ impl TTS {
         let eleven_labs_url = format!(
             "wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input?model_id={model}"
         );
-        info!("{eleven_labs_url}");
 
         let (mut socket, _) = connect_async(eleven_labs_url.clone()).await?;
 
@@ -60,11 +59,12 @@ impl TTS {
         socket.send(Message::Text(bos_msg)).await?;
 
         let msg = serde_json::to_string(&TTSMsg {
-            text: &("These challenges that you face are going to do their best to take you down "),
+            text: "These challenges that you face are going to do their best to take you down ",
             try_trigger_generation: true,
         })?;
         socket.send(Message::Text(msg)).await?;
 
+        info!("\n\n STARTED TTS SERVICE");
         Ok(Self {
             socket: Arc::new(Mutex::new(socket)),
             eleven_labs_url,

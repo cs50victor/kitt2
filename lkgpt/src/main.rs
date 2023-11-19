@@ -17,8 +17,8 @@ mod utils;
 
 use actix_web::{middleware, web::Data, App, HttpServer};
 
-use log::info;
-use std::env;
+use log::{error, info};
+use std::{env, thread};
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -31,12 +31,15 @@ async fn main() -> std::io::Result<()> {
         .parse::<u16>()
         .expect("PORT couldn't be set");
 
-    pretty_env_logger::formatted_builder()
+    let mut formatted_builder = pretty_env_logger::formatted_builder();
+    let pretty_env_builder = formatted_builder
+        .filter_module("lkgpt", log::LevelFilter::Info)
         .filter_module("actix_server", log::LevelFilter::Info)
-        .filter_module("actix_web", log::LevelFilter::Info)
-        .filter_module("livekit", log::LevelFilter::Info)
-        .filter_module("her", log::LevelFilter::Info)
-        .init();
+        .filter_module("actix_web", log::LevelFilter::Info);
+    if cfg!(target_os = "unix"){
+        pretty_env_builder.filter_module("livekit", log::LevelFilter::Info);
+    }
+    pretty_env_builder.init();
 
     let server_data = Data::new(parking_lot::Mutex::new(state::ServerState::new()));
 
