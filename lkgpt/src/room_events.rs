@@ -7,7 +7,8 @@ use livekit::{
     webrtc::{audio_stream::native::NativeAudioStream, video_stream::native::NativeVideoStream},
     DataPacketKind, RoomEvent,
 };
-use log::{info, warn};
+use log::{info, warn, error};
+use parking_lot::{Mutex, MutexGuard, RawMutex};
 use serde::{Deserialize, Serialize};
 
 use crate::stt::{transcribe, STT};
@@ -37,9 +38,9 @@ struct RoomText {
 //     }
 // }
 
-pub async fn handle_room_events(
+pub async fn handle_room_events<'a>(
     turbo_input_tx: tokio::sync::mpsc::UnboundedSender<String>,
-    // tts_client: Arc<STT>,
+    // stt_client: Arc<STT>,
     mut room_events: tokio::sync::mpsc::UnboundedReceiver<RoomEvent>,
 ) -> anyhow::Result<()> {
     while let Some(event) = room_events.recv().await {
@@ -52,11 +53,16 @@ pub async fn handle_room_events(
                 RemoteTrack::Audio(audio_track) => {
                     let audio_rtc_track = audio_track.rtc_track();
                     let audio_stream = NativeAudioStream::new(audio_rtc_track);
-                    // tokio::spawn(transcribe(
-                    //     turbo_input_tx.clone(),
-                    //     tts_client.clone(),
-                    //     audio_stream,
-                    // ));
+                    // let stt_client = stt_client.clone();
+                    // tokio::task::spawn_blocking({
+                    //     let stt_client = stt_client.lock();
+                    //     let turbo_input_tx = turbo_input_tx.clone();
+                    //     async move ||{
+                    //         if let Err(e) = transcribe(turbo_input_tx,stt_client,audio_stream).await{
+                    //             error!("Couldn't transcribe audio - {e}");
+                    //         };
+                    //     }
+                    // });
                 }
                 RemoteTrack::Video(video_track) => {
                     let video_rtc_track = video_track.rtc_track();

@@ -1,4 +1,4 @@
-#![feature(ascii_char)]
+#![feature(ascii_char,async_closure)]
 mod assets;
 mod core;
 mod gpt;

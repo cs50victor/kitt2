@@ -44,6 +44,16 @@ impl TTS {
             "wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input?model_id={model}"
         );
 
+
+        let stream = TcpStream::connect("localhost:9001").await?;
+        handshake(&mut stream).await?;
+
+        let mut ws = fastwebsockets::WebSocket::after_handshake(stream, fastwebsockets::Role::Client);
+        ws.set_writev(true);
+        ws.set_auto_close(true);
+        ws.set_auto_pong(true);
+
+
         let (mut socket, _) = connect_async(eleven_labs_url.clone()).await?;
 
         let bos_msg = serde_json::to_string(&BOSMessage {
@@ -58,11 +68,11 @@ impl TTS {
         // start service
         socket.send(Message::Text(bos_msg)).await?;
 
-        let msg = serde_json::to_string(&TTSMsg {
-            text: "These challenges that you face are going to do their best to take you down ",
-            try_trigger_generation: true,
-        })?;
-        socket.send(Message::Text(msg)).await?;
+        // let msg = serde_json::to_string(&TTSMsg {
+        //     text: "These challenges that you face are going to do their best to take you down ",
+        //     try_trigger_generation: true,
+        // })?;
+        // socket.send(Message::Text(msg)).await?;
 
         info!("\n\n STARTED TTS SERVICE");
         Ok(Self {
@@ -99,7 +109,7 @@ impl TTS {
                     _ => {}
                 },
                 Err(e) => {
-                    error!("\n\n\n\nvoice stream from api err {e}");
+                    error!("\n\nvoice stream from api err {e}");
                 }
             }
         }

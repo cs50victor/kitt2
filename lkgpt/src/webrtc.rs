@@ -12,7 +12,7 @@ use tokio::{
 };
 use livekit as lsdk;
 
-use crate::{gpt::gpt, room_events::handle_room_events, track_pub::{publish_tracks, TracksPublicationData}, tts::TTS, turbo::Turbo, utils};
+use crate::{gpt::gpt, room_events::handle_room_events, track_pub::{publish_tracks, TracksPublicationData}, tts::TTS, turbo::Turbo, utils, stt::STT};
 
 pub struct TurboLivekitConnector {
     room: Arc<Room>,
@@ -49,9 +49,9 @@ impl TurboLivekitConnector {
         // ************** SETUP OPENAI, TTS, & STT **************
         let openai_client =
             OPENAI_CLIENT::with_config(OpenAIConfig::new().with_org_id(open_ai_org_id));
-        // let stt_cleint = Arc::new(STT::new()?);
-        let mut tts_client = TTS::new().await?;
         let mut turbo = Turbo::new()?.load_basic_scene()?;
+        // let stt_cleint = Arc::new(Mutex::new(STT::new()?));
+        let tts_client = TTS::new().await?;
 
         let TracksPublicationData {
             video_pub,
@@ -63,13 +63,12 @@ impl TurboLivekitConnector {
         // ************** CREATE THREADS TO KICK THINGS OFF **************
         let room_event_handle =
             tokio::spawn(handle_room_events(text_input_tx.clone(), room_events));
-        // stt_cleint,
 
         let tts_client_for_gpt = tts_client.clone();
-        let mut tts_client_for_receiver = tts_client.clone();
+        let tts_client_for_receiver = tts_client.clone();
         let mut tts_client_x = tts_client.clone();
 
-        let tts_receiver_handle = tokio::spawn(demo(from_gpt_rx, tts_client_for_receiver));
+        let tts_receiver_handle = tokio::spawn(tts_receiver(from_gpt_rx, tts_client_for_receiver));
 
         // let tts_thread_handle = tokio::spawn(tts.transcribe(main_input_rx));
 
@@ -131,7 +130,7 @@ impl TurboLivekitConnector {
     }
 }
 
-async fn demo(mut from_gpt_rx: UnboundedReceiver<String>, mut tts_client_for_receiver: TTS) {
+async fn tts_receiver(mut from_gpt_rx: UnboundedReceiver<String>, mut tts_client_for_receiver: TTS) {
     while let Some(text_chunk) = from_gpt_rx.recv().await {
         info!("text_chunk for TEXT TO VOICE [{text_chunk}]");
         if let Err(e) = tts_client_for_receiver.send(text_chunk.clone()).await {

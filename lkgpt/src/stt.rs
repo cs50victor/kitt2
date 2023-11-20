@@ -6,14 +6,15 @@ use std::{
 use futures::StreamExt;
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use log::error;
+use parking_lot::Mutex;
 use tokio::sync::mpsc::UnboundedSender;
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperError};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperError, WhisperState};
 
-pub struct STT {
-    whisper_ctx: WhisperContext,
+pub struct STT <'a> {
+    state: WhisperState<'a>,
 }
 
-impl STT {
+impl <'a>STT<'a> {
     pub const LATENCY_FRAMES: f32 = (Self::LATENCY_MS / 1_000.0) * Self::SAMPLE_RATE_F32;
     // Uses a delay of `LATENCY_MS` milliseconds in case the default input and output streams are not precisely synchronised
     pub const LATENCY_MS: f32 = 5000.0;
@@ -26,11 +27,12 @@ impl STT {
     pub const SAMPLING_FREQ: f32 = Self::SAMPLE_RATE_F32 / 2.0;
     pub const STEP_MS: i32 = 3000;
 
-    pub fn new() -> anyhow::Result<Self> {
-        // ggml-base.en.bin
-        let whisper_ctx = WhisperContext::new("./ggml-tiny.bin")?;
-        Ok(Self { whisper_ctx })
-    }
+    // pub fn new() -> anyhow::Result<Self> {
+    //     // ggml-base.en.bin
+    //     let whisper_ctx = WhisperContext::new("./ggml-tiny.bin")?;
+    //     let state = whisper_ctx.create_state()?;
+    //     Ok(Self { state })
+    // }
 
     pub fn gen_whisper_params<'b>(&self) -> FullParams<'b, 'b> {
         let mut params = FullParams::new(SamplingStrategy::default());
@@ -57,15 +59,15 @@ impl STT {
     }
 }
 
-pub async fn transcribe(
+pub async fn transcribe<'a>(
     txt_input_sender: UnboundedSender<String>,
-    tts_client: Arc<STT>,
+    stt_client: Mutex<STT<'a>>,
     mut audio_stream: NativeAudioStream,
 ) -> Result<(), WhisperError> {
     let mut audio_buffer: Vec<i16> = Vec::new();
-    let mut state = tts_client.whisper_ctx.create_state()?;
 
     let mut start_time = Instant::now();
+    let mut stt_client = stt_client.lock();
 
     while let Some(frame) = audio_stream.next().await {
         audio_buffer.extend_from_slice(&frame.data);
@@ -75,11 +77,12 @@ pub async fn transcribe(
         {
             start_time = Instant::now();
 
-            state.full(tts_client.gen_whisper_params(), &audio_samples)?;
-            let num_tokens = state.full_n_tokens(0)?;
+            let params = stt_client.gen_whisper_params();
+            stt_client.state.full(params, &audio_samples)?;
+            let num_tokens = stt_client.state.full_n_tokens(0)?;
             let transcription = (1..num_tokens - 1)
                 .map(|i| {
-                    state.full_get_token_text(0, i).unwrap_or_else(|err| {
+                    stt_client.state.full_get_token_text(0, i).unwrap_or_else(|err| {
                         // Handle the error, e.g., log it, and continue with a default value or exit
                         // For example, using a default value like an empty string
                         error!("couldn't processing token {}: {}", i, err);
