@@ -5,6 +5,7 @@ use async_openai::{config::OpenAIConfig, Client as OPENAI_CLIENT};
 use livekit::{publication::LocalTrackPublication, Room};
 
 use log::{error, info, warn};
+use lsdk::RoomError;
 use parking_lot::Mutex;
 use tokio::{
     sync::mpsc::{Receiver, UnboundedReceiver},
@@ -22,12 +23,11 @@ pub struct TurboLivekitConnector {
     video_pub: LocalTrackPublication,
     audio_pub: LocalTrackPublication,
     gpt_thread_handle: JoinHandle<()>,
-    tts_thread_handle: JoinHandle<()>,
-    tts_receiver_handle: JoinHandle<()>,
     render_thread_handle: Option<JoinHandle<()>>,
 }
 
 const BOT_NAME: &str = "talking_donut";
+
 impl TurboLivekitConnector {
     pub async fn new(participant_room_name:String) -> Result<Self> {
         // ************** REQUIRED ENV VARS **************
@@ -43,16 +43,10 @@ impl TurboLivekitConnector {
 
         // ************** CREATE MESSAGING CHANNELS **************
         let (cmd_input_sender, cmd_input_receiver) = std::sync::mpsc::channel::<String>();
-        let (text_input_tx, main_input_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (gpt_input_tx, gpt_input_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         let (to_voice_tx, from_gpt_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
         // ************** SETUP OPENAI, TTS, & STT **************
-        let openai_client =
-            OPENAI_CLIENT::with_config(OpenAIConfig::new().with_org_id(open_ai_org_id));
-        let mut turbo = Turbo::new()?.load_basic_scene()?;
-        // let stt_cleint = Arc::new(Mutex::new(STT::new()?));
-        let tts_client = TTS::new().await?;
-
         let TracksPublicationData {
             video_pub,
             video_src,
@@ -60,33 +54,34 @@ impl TurboLivekitConnector {
             audio_pub,
         } = publish_tracks(room.clone()).await?;
 
+        let openai_client =
+            OPENAI_CLIENT::with_config(OpenAIConfig::new().with_org_id(open_ai_org_id));
+        let mut turbo = Turbo::new()?.load_basic_scene()?;
+        let stt_cleint = STT::new(gpt_input_tx.clone()).await?;
+        let mut tts_client = TTS::new()?;
+        tts_client.setup_ws_client(audio_src).await?;
+
+
         // ************** CREATE THREADS TO KICK THINGS OFF **************
         let room_event_handle =
-            tokio::spawn(handle_room_events(text_input_tx.clone(), room_events));
+            tokio::spawn(handle_room_events(gpt_input_tx.clone(), stt_cleint, room_events));
 
-        let tts_client_for_gpt = tts_client.clone();
-        let tts_client_for_receiver = tts_client.clone();
-        let mut tts_client_x = tts_client.clone();
+        // let tts_receiver_handle = tokio::spawn(tts_receiver(from_gpt_rx, tts_client_for_receiver));
 
-        let tts_receiver_handle = tokio::spawn(tts_receiver(from_gpt_rx, tts_client_for_receiver));
 
         // let tts_thread_handle = tokio::spawn(tts.transcribe(main_input_rx));
 
         let gpt_thread_handle = tokio::spawn(async {
             if let Err(e) = gpt(
-                main_input_rx,
+                gpt_input_rx,
                 openai_client,
-                tts_client_for_gpt,
-                to_voice_tx,
+                tts_client,
             )
             .await
             {
                 error!("GPT thread exited with error: {e}");
             }
         });
-
-        let tts_thread_handle =
-            tokio::spawn(async move { tts_client_x.handle_voice_stream(audio_src).await });
 
         let render_thread_handle = tokio::spawn(async move {
             if let Err(e) = turbo.render(video_src).await {
@@ -96,14 +91,12 @@ impl TurboLivekitConnector {
 
         Ok(Self {
             room,
-            text_input_tx,
+            text_input_tx: gpt_input_tx,
             audio_pub,
             video_pub,
             room_event_handle,
             cmd_input_sender,
             gpt_thread_handle,
-            tts_thread_handle,
-            tts_receiver_handle,
             render_thread_handle: Some(render_thread_handle),
         })
     }
@@ -118,33 +111,16 @@ impl TurboLivekitConnector {
         self.text_input_tx.clone()
     }
 
-    async fn shutdown(&mut self) {
-        match self.room.close().await {
-            Ok(d) => {
-                info!("Successfull closed room. {d:?}");
-            }
-            Err(e) => {
-                warn!("Couldn't close livekit room. {e:?}");
-            }
-        };
-    }
-}
-
-async fn tts_receiver(mut from_gpt_rx: UnboundedReceiver<String>, mut tts_client_for_receiver: TTS) {
-    while let Some(text_chunk) = from_gpt_rx.recv().await {
-        info!("text_chunk for TEXT TO VOICE [{text_chunk}]");
-        if let Err(e) = tts_client_for_receiver.send(text_chunk.clone()).await {
-            error!("Coudln't send text to text-to-speech channel - {e:?}");
-        } else {
-            info!("GPT SENT THIS TO VOICE LABS - {text_chunk}");
-        }
+    async fn shutdown(&mut self) -> Result<(), RoomError> {
+        self.room.close().await
     }
 }
 
 impl Drop for TurboLivekitConnector {
     fn drop(&mut self) {
-        futures::executor::block_on(self.shutdown());
-        warn!("DROPPED - TURBOWEBRTC CONNECTOR ");
+        if let Err(e) = futures::executor::block_on(self.shutdown()){
+            warn!("Error shutting down turbo webrtc | {e}");
+        };
     }
 }
 

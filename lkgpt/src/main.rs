@@ -22,6 +22,7 @@ use std::{env, thread};
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    // tracing_subscriber::fmt::init();
     dotenvy::dotenv().ok();
 
     std::env::var("LIVEKIT_API_KEY").expect("LIVEKIT_API_KEY must be set");
@@ -54,7 +55,6 @@ async fn main() -> std::io::Result<()> {
             .configure(routes::top_level_routes)
     })
     .bind(("0.0.0.0", port))?
-    .workers(3)
     .run()
     .await
 }
