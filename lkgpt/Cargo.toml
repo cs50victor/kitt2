@@ -47,6 +47,6 @@ deepgram = "0.4.0"
 async-trait = "0.1.74"
 ezsockets = { version = "0.6.1", features = ["client"] }
 tracing-subscriber = "0.3.18"
-async-channel = "2.1.0"
+async-channel = "2.1.1"
 bytes = "1.5.0"
 url = "2.5.0"
