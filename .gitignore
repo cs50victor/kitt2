@@ -2,7 +2,9 @@
 
 # Rust
 target/
-pipeline_cache.bin
+
+# ggml binaries and binaries in general
+*.bin
 
 # dependencies
 node_modules

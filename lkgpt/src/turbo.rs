@@ -17,13 +17,20 @@ use livekit::webrtc::{
     video_frame::{I420Buffer, VideoFrame, VideoRotation},
     video_source::native::NativeVideoSource,
 };
-use log::{info, warn};
+use log::{error, info, warn};
 use parking_lot::Mutex;
 use vulkano::{command_buffer::PrimaryCommandBufferAbstract, sync::GpuFuture};
 
 const PIXEL_SIZE: usize = 4;
 const FB_WIDTH: usize = 1920;
 const FB_HEIGHT: usize = 1080;
+
+#[derive(Clone)]
+struct FrameData {
+    image: ImageBuffer<Rgba<u8>, Vec<u8>>,
+    framebuffer: Arc<Mutex<Vec<u8>>>,
+    video_frame: Arc<Mutex<VideoFrame<I420Buffer>>>,
+}
 
 pub struct Turbo {
     camera: Camera,
@@ -70,7 +77,7 @@ impl Turbo {
     pub async fn render(
         &mut self,
         // render_input_receiver: Receiver<String>,
-        livekit_vid_src: NativeVideoSource,
+        livekit_rtc_src: NativeVideoSource,
     ) -> Result<()> {
         let (pipeline, framebuffer) = self.scene.new_gfx_pipeline_and_frame_buffer()?;
         let now = Instant::now();
@@ -81,14 +88,18 @@ impl Turbo {
         let mut interval =
             tokio::time::interval(Duration::from_millis(1000 / self.target_fps as u64));
 
+        let [w, h] = self.scene.width_height();
+        let default_image =
+            ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(w, h, vec![0u8; FB_WIDTH * FB_HEIGHT * 4])
+                .unwrap();
         let mut frame_data = FrameData {
-            image: None,
-            framebuffer: vec![0u8; FB_WIDTH * FB_HEIGHT * 4],
-            video_frame: VideoFrame {
+            image: default_image,
+            framebuffer: Arc::new(Mutex::new(vec![0u8; FB_WIDTH * FB_HEIGHT * 4])),
+            video_frame: Arc::new(Mutex::new(VideoFrame {
                 rotation: VideoRotation::VideoRotation0,
                 buffer: I420Buffer::new(FB_WIDTH as u32, FB_HEIGHT as u32),
                 timestamp_us: 0,
-            },
+            })),
         };
 
         loop {
@@ -98,19 +109,6 @@ impl Turbo {
             //         return Ok(());
             //     }
             //     self.scene.handle_input(input);
-            // }
-            tokio::select! {
-                // _ = if let Some(input) = get_user_input(&render_input_receiver)?{
-                //     if is_exit_cmd(input) {
-                //         return Ok(());
-                //     }
-                //     self.scene.handle_input(input);
-                // }
-                _ = interval.tick() => {}
-            }
-
-            // if num_of_frames == 0 {
-            //     self.scene.print_stats();
             // }
 
             let elapsed_time = rotation_start.elapsed();
@@ -142,56 +140,57 @@ impl Turbo {
                 None => bail!("Failed to create image buffer"),
             };
 
-            frame_data.image = Some(image);
+            frame_data.image = image;
 
-            let source = livekit_vid_src.clone();
-            let frame_image = frame_data.image.unwrap();
-            let img_vec = frame_image.as_raw();
-            let mut framebuffer = frame_data.framebuffer.clone();
-            let mut video_frame = default_video_frame();
-            let i420_buffer = &mut video_frame.buffer;
+            if let Err(e) = tokio::task::spawn_blocking({
+                let frame_data = frame_data.clone();
+                let source = livekit_rtc_src.clone();
+                move || {
+                    let img_vec = frame_data.image.as_raw();
+                    let mut framebuffer = frame_data.framebuffer.lock();
+                    let mut video_frame = frame_data.video_frame.lock();
+                    let i420_buffer = &mut video_frame.buffer;
 
-            let (stride_y, stride_u, stride_v) = i420_buffer.strides();
-            let (data_y, data_u, data_v) = i420_buffer.data_mut();
+                    let (stride_y, stride_u, stride_v) = i420_buffer.strides();
+                    let (data_y, data_u, data_v) = i420_buffer.data_mut();
 
-            framebuffer.clone_from_slice(img_vec);
+                    framebuffer.clone_from_slice(img_vec);
 
-            yuv_helper::abgr_to_i420(
-                &framebuffer,
-                (FB_WIDTH * PIXEL_SIZE) as u32,
-                data_y,
-                stride_y,
-                data_u,
-                stride_u,
-                data_v,
-                stride_v,
-                FB_WIDTH as i32,
-                FB_HEIGHT as i32,
-            );
+                    yuv_helper::abgr_to_i420(
+                        &framebuffer,
+                        (FB_WIDTH * PIXEL_SIZE) as u32,
+                        data_y,
+                        stride_y,
+                        data_u,
+                        stride_u,
+                        data_v,
+                        stride_v,
+                        FB_WIDTH as i32,
+                        FB_HEIGHT as i32,
+                    );
 
-            source.capture_frame(&video_frame);
+                    source.capture_frame(&*video_frame);
+                }
+            })
+            .await
+            {
+                error!("Error sending video frame to livekit {e}");
+            };
+
+            interval.tick().await;
 
             // if num_of_frames % fps == 0 {
             //     info!(
-            //         "[ Frame time before limiter : {:.3} ms ]",
+            //         "[ Frame time after limiter : {:.3} ms ]",
             //         curr_frame_time.elapsed().as_secs_f64() * 1000.0
             //     );
             // }
-
-            // frame_limiter(&mut curr_frame_time, target_frame_time);
 
             num_of_frames = (num_of_frames + 1) % fps;
         }
     }
 }
 
-fn default_video_frame() -> VideoFrame<I420Buffer> {
-    VideoFrame {
-        rotation: VideoRotation::VideoRotation0,
-        buffer: I420Buffer::new(FB_WIDTH as u32, FB_HEIGHT as u32),
-        timestamp_us: 0,
-    }
-}
 fn get_user_input(input_revr: &Receiver<String>) -> Result<Option<String>> {
     match input_revr.try_recv() {
         Ok(input) => Ok(Some(input.clone())),
@@ -212,12 +211,6 @@ fn is_exit_cmd(input: &str) -> bool {
         || input == "goodbye"
         || input == "ciao"
         || input == "adios"
-}
-
-struct FrameData {
-    image: Option<ImageBuffer<Rgba<u8>, Vec<u8>>>,
-    framebuffer: Vec<u8>,
-    video_frame: VideoFrame<I420Buffer>,
 }
 
 impl Drop for Turbo {

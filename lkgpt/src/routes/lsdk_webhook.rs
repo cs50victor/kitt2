@@ -7,14 +7,11 @@ use crate::{
     utils,
     webrtc::TurboLivekitConnector,
 };
-use livekit as lsdk;
 use livekit_api::{
     access_token::{self},
     webhooks,
 };
 use log::info;
-
-const BOT_NAME: &str = "talking_donut";
 
 pub async fn handler(
     req: HttpRequest,
@@ -50,38 +47,18 @@ pub async fn handler(
     if event.room.is_some() && event.event == "room_started" {
         info!("ROOM STARTED 🎉");
         let livekit_protocol::Room {
-            name: room_name,
+            name: participant_room_name,
             max_participants,
             num_participants,
             ..
         } = event.room.unwrap();
+
         if num_participants < max_participants {
-            let lvkt_url = std::env::var("LIVEKIT_WS_URL").expect("LIVEKIT_WS_URL is not set");
-            let lvkt_token = match utils::create_bot_token(room_name, BOT_NAME) {
-                Ok(i) => i,
-                Err(e) => return Resp::InternalServerError().json(ServerMsg::error(e.to_string())),
-            };
-
-            let (room, room_events) = match lsdk::Room::connect(
-                &lvkt_url,
-                &lvkt_token,
-                lsdk::RoomOptions {
-                    ..Default::default()
-                },
-            )
-            .await
-            {
-                Ok(i) => i,
-                Err(e) => return Resp::InternalServerError().json(ServerMsg::error(e.to_string())),
-            };
-
-            let room = Arc::new(room);
-
-            info!("Established connection with room. ID -> [{}]", room.name());
-
-            let mut turbo_webrtc = match TurboLivekitConnector::new(room, room_events).await {
+            let mut turbo_webrtc = match TurboLivekitConnector::new(participant_room_name).await {
                 Ok(turbo_webrtc) => turbo_webrtc,
-                Err(e) => return Resp::InternalServerError().json(ServerMsg::error(e.to_string())),
+                Err(e) => {
+                    return Resp::InternalServerError().json(ServerMsg::error(format!("{e}")))
+                }
             };
 
             let mut server_data = server_data.lock();
