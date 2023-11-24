@@ -8,16 +8,15 @@
 2. `pnpm dev`
 3. `ngrok http http:://localhost:4000` ( in a different terminal )
 
+- stt ( deepgram )
+- tts ( eleven labs )
+
 ## TODO
 
 - [ ] Fix bugs
 - [ ] Clean up code
 - [ ] Simplify
-- [ ] Add stt ( whisper )
-- [ ] Add tts ( new OPENAI model / Eleven Labs )
 - [ ] Update Docs
-
-
 
 ### Credits
 ```
