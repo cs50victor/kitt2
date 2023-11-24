@@ -1,0 +1,64 @@
+name: CI-TS
+
+on:
+  push:
+    paths:
+      - "**/web/**"
+      - "**/web_shared/**"
+      - "**/.eslintrc.json"
+      - "**/.node-version"
+      - "**/package.json"
+      - "**/pnpm-lock.yaml"
+  workflow_dispatch:
+
+env:
+  CI: true
+  # https://turbo.build/repo/docs/ci/github-actions#remote-caching
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+# Cancel old builds on new commit for same workflow + branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-ts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Sources
+        uses: actions/checkout@v3
+
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install PNPM
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install Dependencies
+        run: pnpm install
+
+      - name: Build
+        run: pnpm build
+
+      - name: Lint
+        run: pnpm lint
