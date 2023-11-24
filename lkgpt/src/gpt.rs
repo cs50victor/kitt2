@@ -23,14 +23,12 @@ pub async fn gpt(
     openai_client: Client<OpenAIConfig>,
     mut tts_client: TTS,
 ) -> anyhow::Result<()> {
-    let splitters = ['.', ',', '?', '!', ';', ':', '—', '-', '(', ')', '[', ']', '}', ' '];
+    let splitters = [
+        '.', ',', '?', '!', ';', ':', '—', '-', '(', ')', '[', ']', '}', ' ',
+    ];
 
     let mut txt_buffer = String::new();
     let mut tts_buffer = String::new();
-    let mut last_text_send_time = Instant::now();
-    let mut last_voice_send_time = Instant::now();
-    let text_latency = Duration::from_millis(500);
-    let max_speech_response_time = Duration::from_millis(800);
 
     let mut req_args = CreateChatCompletionRequestArgs::default();
     let openai_req = req_args.model("gpt-3.5-turbo").max_tokens(512u16);
@@ -38,9 +36,7 @@ pub async fn gpt(
     // let text_latency = Duration::from_millis(500);
     while let Some(chunk) = text_input_rx.recv().await {
         txt_buffer.push_str(&chunk);
-        if ends_with_splitter(&splitters, &txt_buffer)
-            && last_text_send_time.elapsed() >= text_latency
-        {
+        if ends_with_splitter(&splitters, &txt_buffer){
             let request = openai_req
                 .messages([ChatCompletionRequestUserMessageArgs::default()
                     .content(ChatCompletionRequestUserMessageContent::Text(
@@ -73,7 +69,6 @@ pub async fn gpt(
                 }
             }
             txt_buffer.clear();
-            last_text_send_time = Instant::now();
         } else if !txt_buffer.ends_with(' ') {
             txt_buffer.push(' ');
         }
@@ -84,26 +79,3 @@ pub async fn gpt(
 fn ends_with_splitter(splitters: &[char], chunk: &str) -> bool {
     !chunk.is_empty() && chunk != " " && splitters.iter().any(|&splitter| chunk.ends_with(splitter))
 }
-
-// loop {
-//      tokio::select! {
-//          chunk = text_input_rx.recv() => {
-//              if let Some(chunk) = chunk {
-//                  buffer.push_str(&chunk);
-//                  if ends_with_splitter(&splitters, &buffer) {
-//                      send_to_gpt(&client, &gpt_endpoint, &buffer).await;
-//                      buffer.clear();
-//                  }
-//              } else {
-//                  // Channel has closed
-//                  break;
-//              }
-//          }
-//          _ = interval.tick() => {
-//              if !buffer.is_empty() {
-//                  send_to_gpt(&client, &gpt_endpoint, &buffer).await;
-//                  buffer.clear();
-//              }
-//          }
-//      }
-//  }

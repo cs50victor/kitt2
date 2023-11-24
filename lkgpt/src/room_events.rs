@@ -7,11 +7,11 @@ use livekit::{
     webrtc::{audio_stream::native::NativeAudioStream, video_stream::native::NativeVideoStream},
     DataPacketKind, RoomEvent,
 };
-use log::{info, warn, error};
+use log::{error, info, warn};
 use parking_lot::{Mutex, MutexGuard, RawMutex};
 use serde::{Deserialize, Serialize};
 
-use crate::stt::{STT, transcribe};
+use crate::stt::{transcribe, STT};
 
 #[derive(Serialize, Deserialize)]
 struct RoomText {
@@ -54,7 +54,8 @@ pub async fn handle_room_events(
                             serde_json::from_str(payload.as_str());
                         match room_text {
                             Ok(room_text) => {
-                                if let Err(e) = gpt_input_tx.send(format!("{} ",room_text.message)){
+                                if let Err(e) = gpt_input_tx.send(format!("{} ", room_text.message))
+                                {
                                     error!("Couldn't send the text to gpt {e}")
                                 };
                             }

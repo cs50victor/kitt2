@@ -1,23 +1,25 @@
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use bytes::{BufMut, Bytes, BytesMut};
 use async_trait::async_trait;
-use ezsockets::{ClientConfig, RawMessage, SocketConfig, Client, MessageSignal, MessageStatus, client::ClientCloseMode, WSError, CloseFrame};
+use bytes::{BufMut, Bytes, BytesMut};
 use deepgram::Deepgram;
+use ezsockets::{
+    client::ClientCloseMode, Client, ClientConfig, CloseFrame, MessageSignal, MessageStatus,
+    RawMessage, SocketConfig, WSError,
+};
 use futures::StreamExt;
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use log::{error, info};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, Map, json};
+use serde_json::{json, Map, Value};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::sync::mpsc::UnboundedSender;
 
-
 #[derive(Clone)]
-pub struct STT{
-    ws_client: Client<WSClient>
+pub struct STT {
+    ws_client: Client<WSClient>,
 }
 
 struct WSClient {
@@ -29,9 +31,9 @@ impl ezsockets::ClientExt for WSClient {
     type Call = ();
 
     async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> {
-        let data : Value = serde_json::from_str(&text)?;
+        let data: Value = serde_json::from_str(&text)?;
         let transcript_details = data["channel"]["alternatives"][0].clone();
-        
+
         info!("received message from deepgram: {transcript_details}");
         self.to_gpt.send(transcript_details.to_string())?;
         Ok(())
@@ -52,12 +54,18 @@ impl ezsockets::ClientExt for WSClient {
         Ok(())
     }
 
-    async fn on_connect_fail(&mut self, _error: WSError) -> Result<ClientCloseMode, ezsockets::Error> {
+    async fn on_connect_fail(
+        &mut self,
+        _error: WSError,
+    ) -> Result<ClientCloseMode, ezsockets::Error> {
         info!("DEEPGRAM connection FAIL 💔");
         Ok(ClientCloseMode::Reconnect)
     }
 
-    async fn on_close(&mut self, _frame: Option<CloseFrame>) -> Result<ClientCloseMode, ezsockets::Error> {
+    async fn on_close(
+        &mut self,
+        _frame: Option<CloseFrame>,
+    ) -> Result<ClientCloseMode, ezsockets::Error> {
         info!("DEEPGRAM connection CLOSE 💔");
         Ok(ClientCloseMode::Reconnect)
     }
@@ -80,16 +88,22 @@ impl STT {
     pub const SAMPLE_RATE_F32: f32 = Self::SAMPLE_RATE as f32;
     pub const SAMPLING_FREQ: f32 = Self::SAMPLE_RATE_F32 / 2.0;
 
-    const MIN_AUDIO_MS_CHUNK: f32 = 20.0;
+    const MIN_AUDIO_MS_CHUNK: u64 = 20;
 
-    pub async fn new(gpt_input_tx: tokio::sync::mpsc::UnboundedSender<String>) -> anyhow::Result<Self> {
-        let deepgram_api_key = std::env::var("DEEPGRAM_API_KEY").expect("The DEEPGRAM_API_KEY env variable is required!");
+    pub async fn new(
+        gpt_input_tx: tokio::sync::mpsc::UnboundedSender<String>,
+    ) -> anyhow::Result<Self> {
+        let deepgram_api_key = std::env::var("DEEPGRAM_API_KEY")
+            .expect("The DEEPGRAM_API_KEY env variable is required!");
 
-        let config = ClientConfig::new("wss://api.deepgram.com/v1/listen").socket_config(SocketConfig {
-            heartbeat: Duration::from_secs(8),
-            timeout: Duration::from_secs(30 * 60), // 30 minutes
-            heartbeat_ping_msg_fn: Arc::new(|_t: Duration| RawMessage::Text(r#"{ "type": "KeepAlive" }"#.into())),
-        })
+        let config = ClientConfig::new("wss://api.deepgram.com/v1/listen")
+            .socket_config(SocketConfig {
+                heartbeat: Duration::from_secs(8),
+                timeout: Duration::from_secs(30 * 60), // 30 minutes
+                heartbeat_ping_msg_fn: Arc::new(|_t: Duration| {
+                    RawMessage::Text(r#"{ "type": "KeepAlive" }"#.into())
+                }),
+            })
             .header("authorization", &format!("token {}", deepgram_api_key))
             .query_parameter("encoding", "linear16")
             .query_parameter("sample_rate", &Self::SAMPLE_RATE.to_string())
@@ -98,13 +112,15 @@ impl STT {
             .query_parameter("smart_format", "true")
             .query_parameter("filler_words", "true")
             .query_parameter("version", "latest")
-            .query_parameter("tier", "nova")
-        ;
+            .query_parameter("tier", "nova");
 
-        let (ws_client, future) = ezsockets::connect(|_client| 
-            WSClient {to_gpt: gpt_input_tx}, 
-            config
-        ).await;
+        let (ws_client, future) = ezsockets::connect(
+            |_client| WSClient {
+                to_gpt: gpt_input_tx,
+            },
+            config,
+        )
+        .await;
 
         Ok(Self { ws_client })
     }
@@ -112,34 +128,40 @@ impl STT {
         let signal = self.ws_client.binary(bytes)?;
         Ok(signal.status())
     }
-
 }
 
-pub async fn transcribe(
-    stt_client: STT,
-    mut audio_stream: NativeAudioStream,
-)  {
+pub async fn transcribe(stt_client: STT, mut audio_stream: NativeAudioStream) {
     // let mut curr_audio_len = 0.0_f32; // in ms
-    
-    while let Some(frame) = audio_stream.next().await {
-        let num_of_samples = frame.data.len();
-        // curr_audio_len += (num_of_sample as u32 / frame.sample_rate) as f32 /1000.0;
-        // if curr_audio_len > STT::MIN_AUDIO_MS_CHUNK {
-        //     curr_audio_len = 0.0;
-        // }
 
-        let mut bytes = BytesMut::with_capacity(num_of_samples * 2);
-        frame.data.iter().for_each(|sample|bytes.put_i16_le(*sample));
-        match stt_client.send(bytes.freeze()){
-            Ok(status) => info!("Sent audio to deegram | Msg status {status:?}"),
-            Err(e) => error!("Error sending audio bytes to deepgram ws {e}")
-        };
+    let mut starting_time = Instant::now();
+    let audio = "";
+
+    while let Some(frame) = audio_stream.next().await {
+        // curr_audio_len += (num_of_sample as u32 / frame.sample_rate) as f32 /1000.0;
+
+        let num_of_samples = frame.data.len();
+
+
+        if starting_time.elapsed() > Duration::from_millis(STT::MIN_AUDIO_MS_CHUNK) {
+            let mut bytes = BytesMut::with_capacity(num_of_samples * 2);
+            frame
+                .data
+                .iter()
+                .for_each(|sample| bytes.put_i16_le(*sample));
+
+            starting_time =Instant::now();
+
+            match stt_client.send(bytes.freeze()) {
+                Ok(status) => info!("Sent audio to deegram | Msg status {status:?}"),
+                Err(e) => error!("Error sending audio bytes to deepgram ws {e}"),
+            };
+        }
     }
 }
 
 impl Drop for STT {
     fn drop(&mut self) {
-        if let Err(e) = self.send([]){
+        if let Err(e) = self.send([]) {
             error!("Error shutting down STT  / Deepgram connection | Reason - {e}");
         };
     }

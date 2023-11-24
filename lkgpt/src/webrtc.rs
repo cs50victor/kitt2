@@ -4,6 +4,7 @@ use anyhow::Result;
 use async_openai::{config::OpenAIConfig, Client as OPENAI_CLIENT};
 use livekit::{publication::LocalTrackPublication, Room};
 
+use livekit as lsdk;
 use log::{error, info, warn};
 use lsdk::RoomError;
 use parking_lot::Mutex;
@@ -11,9 +12,16 @@ use tokio::{
     sync::mpsc::{Receiver, UnboundedReceiver},
     task::JoinHandle,
 };
-use livekit as lsdk;
 
-use crate::{gpt::gpt, room_events::handle_room_events, track_pub::{publish_tracks, TracksPublicationData}, tts::TTS, turbo::Turbo, utils, stt::STT};
+use crate::{
+    gpt::gpt,
+    room_events::handle_room_events,
+    stt::STT,
+    track_pub::{publish_tracks, TracksPublicationData},
+    tts::TTS,
+    turbo::Turbo,
+    utils,
+};
 
 pub struct TurboLivekitConnector {
     room: Arc<Room>,
@@ -29,14 +37,16 @@ pub struct TurboLivekitConnector {
 const BOT_NAME: &str = "talking_donut";
 
 impl TurboLivekitConnector {
-    pub async fn new(participant_room_name:String) -> Result<Self> {
+    pub async fn new(participant_room_name: String) -> Result<Self> {
         // ************** REQUIRED ENV VARS **************
         let open_ai_org_id = std::env::var("OPENAI_ORG_ID").expect("OPENAI_ORG_ID must be");
         let lvkt_url = std::env::var("LIVEKIT_WS_URL").expect("LIVEKIT_WS_URL is not set");
 
         // ************** CONNECT TO ROOM **************
         let lvkt_token = utils::create_bot_token(participant_room_name, BOT_NAME)?;
-        let room_options = lsdk::RoomOptions { ..Default::default() };
+        let room_options = lsdk::RoomOptions {
+            ..Default::default()
+        };
         let (room, room_events) = lsdk::Room::connect(&lvkt_url, &lvkt_token, room_options).await?;
         info!("Established connection with room. ID -> [{}]", room.name());
         let room = Arc::new(room);
@@ -61,24 +71,19 @@ impl TurboLivekitConnector {
         let mut tts_client = TTS::new()?;
         tts_client.setup_ws_client(audio_src).await?;
 
-
         // ************** CREATE THREADS TO KICK THINGS OFF **************
-        let room_event_handle =
-            tokio::spawn(handle_room_events(gpt_input_tx.clone(), stt_cleint, room_events));
+        let room_event_handle = tokio::spawn(handle_room_events(
+            gpt_input_tx.clone(),
+            stt_cleint,
+            room_events,
+        ));
 
         // let tts_receiver_handle = tokio::spawn(tts_receiver(from_gpt_rx, tts_client_for_receiver));
-
 
         // let tts_thread_handle = tokio::spawn(tts.transcribe(main_input_rx));
 
         let gpt_thread_handle = tokio::spawn(async {
-            if let Err(e) = gpt(
-                gpt_input_rx,
-                openai_client,
-                tts_client,
-            )
-            .await
-            {
+            if let Err(e) = gpt(gpt_input_rx, openai_client, tts_client).await {
                 error!("GPT thread exited with error: {e}");
             }
         });
@@ -118,7 +123,7 @@ impl TurboLivekitConnector {
 
 impl Drop for TurboLivekitConnector {
     fn drop(&mut self) {
-        if let Err(e) = futures::executor::block_on(self.shutdown()){
+        if let Err(e) = futures::executor::block_on(self.shutdown()) {
             warn!("Error shutting down turbo webrtc | {e}");
         };
     }

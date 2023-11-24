@@ -1,4 +1,4 @@
-#![feature(ascii_char,async_closure)]
+#![feature(ascii_char, async_closure)]
 mod assets;
 mod core;
 mod gpt;
@@ -37,7 +37,7 @@ async fn main() -> std::io::Result<()> {
         .filter_module("lkgpt", log::LevelFilter::Info)
         .filter_module("actix_server", log::LevelFilter::Info)
         .filter_module("actix_web", log::LevelFilter::Info);
-    if cfg!(target_os = "unix"){
+    if cfg!(target_os = "unix") {
         pretty_env_builder.filter_module("livekit", log::LevelFilter::Info);
     }
     pretty_env_builder.init();

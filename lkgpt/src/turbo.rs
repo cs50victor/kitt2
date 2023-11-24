@@ -17,7 +17,7 @@ use livekit::webrtc::{
     video_frame::{I420Buffer, VideoFrame, VideoRotation},
     video_source::native::NativeVideoSource,
 };
-use log::{info, warn, error};
+use log::{error, info, warn};
 use parking_lot::Mutex;
 use vulkano::{command_buffer::PrimaryCommandBufferAbstract, sync::GpuFuture};
 
@@ -89,7 +89,9 @@ impl Turbo {
             tokio::time::interval(Duration::from_millis(1000 / self.target_fps as u64));
 
         let [w, h] = self.scene.width_height();
-        let default_image = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(w, h, vec![0u8; FB_WIDTH * FB_HEIGHT * 4]).unwrap();
+        let default_image =
+            ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(w, h, vec![0u8; FB_WIDTH * FB_HEIGHT * 4])
+                .unwrap();
         let mut frame_data = FrameData {
             image: default_image,
             framebuffer: Arc::new(Mutex::new(vec![0u8; FB_WIDTH * FB_HEIGHT * 4])),
@@ -169,7 +171,9 @@ impl Turbo {
 
                     source.capture_frame(&*video_frame);
                 }
-            }).await{
+            })
+            .await
+            {
                 error!("Error sending video frame to livekit {e}");
             };
 
@@ -186,7 +190,6 @@ impl Turbo {
         }
     }
 }
-
 
 fn get_user_input(input_revr: &Receiver<String>) -> Result<Option<String>> {
     match input_revr.try_recv() {
@@ -209,7 +212,6 @@ fn is_exit_cmd(input: &str) -> bool {
         || input == "ciao"
         || input == "adios"
 }
-
 
 impl Drop for Turbo {
     fn drop(&mut self) {

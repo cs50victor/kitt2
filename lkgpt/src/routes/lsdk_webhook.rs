@@ -13,8 +13,6 @@ use livekit_api::{
 };
 use log::info;
 
-
-
 pub async fn handler(
     req: HttpRequest,
     server_data: web::Data<ServerStateMutex>,
@@ -58,7 +56,9 @@ pub async fn handler(
         if num_participants < max_participants {
             let mut turbo_webrtc = match TurboLivekitConnector::new(participant_room_name).await {
                 Ok(turbo_webrtc) => turbo_webrtc,
-                Err(e) => return Resp::InternalServerError().json(ServerMsg::error(format!("{e}"))),
+                Err(e) => {
+                    return Resp::InternalServerError().json(ServerMsg::error(format!("{e}")))
+                }
             };
 
             let mut server_data = server_data.lock();
