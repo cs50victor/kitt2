@@ -3,8 +3,7 @@ name: CI-TS
 on:
   push:
     paths:
-      - "**/web/**"
-      - "**/web_shared/**"
+      - "**/meet/**"
       - "**/.eslintrc.json"
       - "**/.node-version"
       - "**/package.json"
@@ -13,9 +12,6 @@ on:
 
 env:
   CI: true
-  # https://turbo.build/repo/docs/ci/github-actions#remote-caching
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 # Cancel old builds on new commit for same workflow + branch/PR
 concurrency:

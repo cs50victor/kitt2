@@ -3,8 +3,7 @@ name: CI-RS
 on:
   push:
     paths:
-      - "**/server/**"
-      - "**/crates/**"
+      - "**/lkgpt/**"
       - "**/Cargo.lock"
       - "**/Cargo.toml"
       - "**/rust-toolchain"
@@ -58,4 +57,4 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           kv_token: ${{ secrets.KV_TOKEN }}
-          included_packages: "repo_guided_graph demo_server"
+          included_packages: "lkgpt"
