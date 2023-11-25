@@ -3,8 +3,7 @@ name: CI-RS
 on:
   push:
     paths:
-      - "**/server/**"
-      - "**/crates/**"
+      - "**/lkgpt/**"
       - "**/Cargo.lock"
       - "**/Cargo.toml"
       - "**/rust-toolchain"
