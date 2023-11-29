@@ -25,7 +25,8 @@ jobs:
       fail-fast: false
       matrix:
         rust-toolchain:
-          - nightly-2023-09-20
+          # - nightly-2023-09-20
+          - nightly
 
     steps:
       - name: Get source code
@@ -52,9 +53,9 @@ jobs:
         run: cargo fmt --all -- --check
         # && cargo clippy --verbose -- -D warnings
 
-      - name: Bloat Check
-        uses: cs50victor/cargo-bloat-action@master
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          kv_token: ${{ secrets.KV_TOKEN }}
-          included_packages: "lkgpt"
+      # - name: Bloat Check
+      #   uses: cs50victor/cargo-bloat-action@master
+      #   with:
+      #     token: ${{ secrets.GITHUB_TOKEN }}
+      #     kv_token: ${{ secrets.KV_TOKEN }}
+      #     included_packages: "lkgpt"

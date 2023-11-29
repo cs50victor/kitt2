@@ -4,13 +4,32 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "build": "pnpm --dir=meet build",
     "dev": "concurrently --names 'WEB,SERVER' -c 'auto' \"pnpm --dir=meet dev\" \"cargo rr --bin lkgpt\"",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "pre-commit": "lint-staged"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "@taplo/cli": "^0.5.2",
+    "concurrently": "^8.2.2",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.1.0"
+  },
+  "lint-staged": {
+    "*.rs": [
+      "cargo fmt --"
+    ],
+    "*.toml": [
+      "taplo format"
+    ],
+    "*.{js,ts,tsx}": [
+      "eslint --ext jsx,ts,tsx --quiet --fix --",
+      "prettier --write"
+    ],
+    "*.{md,mdx,yml}": [
+      "prettier --write"
+    ]
   }
 }

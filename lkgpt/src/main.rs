@@ -6,6 +6,7 @@ use std::env;
 mod assets{
     pub mod gltf{
         use anyhow::{bail, Context, Result};
+        use bevy::log::info;
         use glam::Mat4;
         use gltf::{buffer, Gltf};
         use std::{
@@ -42,9 +43,10 @@ mod assets{
                 bail!("gltf file's extension isn't .gltf");
             }
 
-            let base_path = path::Path::new("assets");
-            let full_path = base_path.join(gltf_path);
-            let gltf = Gltf::open(&full_path)?;
+            let path = format!("lkgpt/assets/{gltf_path}");
+            let full_path = path::Path::new(&path);
+            info!("full__gltf_path {full_path:?}");
+            let gltf = Gltf::open(full_path)?;
 
             // Load buffers
             let buffer_data = gltf
@@ -1932,7 +1934,7 @@ mod room_events {
                             match room_text {
                                 Ok(room_text) => {
                                     if let Err(e) =
-                                        gpt_input_tx.send(format!("{} ", room_text.message))
+                                        gpt_input_tx.send(format!("[chat]{} ", room_text.message))
                                     {
                                         error!("Couldn't send the text to gpt {e}")
                                     };
@@ -2040,6 +2042,14 @@ mod gpt {
 
     use crate::{stt::STT, tts::TTS};
 
+    fn remove_prefix<'a>(s: &'a str, prefix: &str) -> String {
+
+        let s = match s.strip_prefix(prefix) {
+            Some(s) => s,
+            None => s
+        };
+        s.to_owned()
+    }
     /// Stream text chunks to gpt as it's being generated, with <1s latency.
     /// Note: if chunks don't end with space or punctuation (" ", ".", "?", "!"),
     /// the stream will wait for more text.
@@ -2050,7 +2060,7 @@ mod gpt {
         mut tts_client: TTS,
     ) -> anyhow::Result<()> {
         let splitters = [
-            '.', ',', '?', '!', ';', ':', '—', '-', '(', ')', '[', ']', '}', ' ',
+            '.', ',', '?', '!', ';', ':', '—', '-', ')', ']', '}', ' '
         ];
 
         let mut txt_buffer = String::new();
@@ -2059,14 +2069,15 @@ mod gpt {
         let mut req_args = CreateChatCompletionRequestArgs::default();
         let openai_req = req_args.model("gpt-3.5-turbo").max_tokens(512u16);
 
+        let text_chat_prefix = "[chat]";
         // let text_latency = Duration::from_millis(500);
         while let Some(chunk) = text_input_rx.recv().await {
             txt_buffer.push_str(&chunk);
-            if ends_with_splitter(&splitters, &txt_buffer) {
+            if txt_buffer.starts_with(text_chat_prefix) || ends_with_splitter(&splitters, &txt_buffer) {
                 let request = openai_req
                     .messages([ChatCompletionRequestUserMessageArgs::default()
                         .content(ChatCompletionRequestUserMessageContent::Text(
-                            txt_buffer.clone(),
+                            remove_prefix(&txt_buffer,text_chat_prefix),
                         ))
                         .build()?
                         .into()])
@@ -2080,7 +2091,11 @@ mod gpt {
                                 if let Some(content) = chat_choice.delta.content {
                                     tts_buffer.push_str(&content);
                                     if ends_with_splitter(&splitters, &tts_buffer) {
-                                        if let Err(e) = tts_client.send(tts_buffer.clone()) {
+                                        let msg = {
+                                            let txt = tts_buffer.clone();
+                                            txt.trim().to_owned()
+                                        };
+                                        if let Err(e) = tts_client.send(msg) {
                                             error!(
                                                 "Coudln't send gpt text chunk to tts channel - {e}"
                                             );
@@ -2097,8 +2112,6 @@ mod gpt {
                     }
                 }
                 txt_buffer.clear();
-            } else if !txt_buffer.ends_with(' ') {
-                txt_buffer.push(' ');
             }
         }
         Ok(())
@@ -2292,7 +2305,6 @@ mod core {
 mod tts {
     use anyhow::bail;
     use async_trait::async_trait;
-    use base64::{engine::general_purpose, Engine as _};
     use bytes::{Buf, BufMut, Bytes, BytesMut};
     use deepgram::Deepgram;
     use ezsockets::{
@@ -2315,6 +2327,8 @@ mod tts {
     };
     use tokio::sync::mpsc::UnboundedSender;
 
+    use std::io::Cursor;
+
     use crate::stt::STT;
 
     #[derive(Serialize)]
@@ -2324,9 +2338,16 @@ mod tts {
     }
 
     #[derive(Serialize)]
+    struct GenerationConfig {
+        chunk_length_schedule: [u8;1]
+    }
+
+    #[derive(Serialize)]
     struct BOSMessage<'a> {
         text: &'a str,
+        try_trigger_generation: bool,
         voice_settings: VoiceSettings,
+        generation_config: GenerationConfig
     }
 
     #[derive(Serialize)]
@@ -2363,20 +2384,12 @@ mod tts {
         tts_client_ref: Arc<Mutex<TTS>>,
     }
 
-    fn vec_u8_to_vec_i16(input: Vec<u8>) -> Vec<i16> {
-        // Ensure that the input Vec<u8> has an even number of elements
-        if input.len() % 2 != 0 {
-            panic!("Input Vec<u8> must have an even number of elements");
-        }
 
-        input
-            .chunks(2)
-            .map(|chunk| {
-                // Convert each pair of u8 to one i16
-                // Little-endian order: The first byte is the least significant
-                i16::from_le_bytes([chunk[0], chunk[1]])
-            })
-            .collect()
+    fn decode_base64_audio(base64_audio: &str) -> anyhow::Result<Vec<i16>> {
+        let data = base64::decode(base64_audio)?;
+        let decoder = rodio::Decoder::new(Cursor::new(data))?;
+
+        Ok(decoder.into_iter().collect::<Vec<i16>>())
     }
 
     #[async_trait]
@@ -2384,12 +2397,13 @@ mod tts {
         type Call = ();
 
         async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> {
+            // info!("raw message from eleven labs {text:?}");
             let data: Value = serde_json::from_str(&text)?;
-            let transcript_details = data["audio"].clone();
+            let base64_audio = data["audio"].clone();
 
-            if transcript_details != Value::Null {
-                let data = general_purpose::STANDARD_NO_PAD
-                    .decode(transcript_details.as_str().unwrap())?;
+            info!("incoming speech from eleven labs");
+            if base64_audio != Value::Null {
+                let data = decode_base64_audio(base64_audio.as_str().unwrap())?;
 
                 const FRAME_DURATION: Duration = Duration::from_millis(500); // Write 0.5s of audio at a time
                 let ms = FRAME_DURATION.as_millis() as u32;
@@ -2399,11 +2413,8 @@ mod tts {
                 let num_samples = (sample_rate / 1000 * ms) as usize;
                 let samples_per_channel = num_samples as u32;
 
-                // let mut resampler = audio_resampler::AudioResampler::default();
-                // resampler.
-
                 let audio_frame = AudioFrame {
-                    data: vec_u8_to_vec_i16(data).into(),
+                    data: data.into(),
                     num_channels,
                     sample_rate,
                     samples_per_channel,
@@ -2411,7 +2422,7 @@ mod tts {
 
                 self.audio_src.capture_frame(&audio_frame).await?;
             } else {
-                error!("received message from eleven labs: {text}");
+                error!("received null message from eleven labs: {text:?}");
             }
 
             Ok(())
@@ -2437,7 +2448,7 @@ mod tts {
             &mut self,
             _error: WSError,
         ) -> Result<ClientCloseMode, ezsockets::Error> {
-            info!("ELEVEN LABS connection FAIL 💔");
+            info!("ELEVEN LABS connection FAIL");
             Ok(ClientCloseMode::Reconnect)
         }
 
@@ -2445,14 +2456,14 @@ mod tts {
             &mut self,
             _frame: Option<CloseFrame>,
         ) -> Result<ClientCloseMode, ezsockets::Error> {
-            info!("ELEVEN LABS connection CLOSE 💔");
+            info!("ELEVEN LABS connection CLOSE");
             let mut tts = self.tts_client_ref.lock();
             tts.started = false;
             Ok(ClientCloseMode::Reconnect)
         }
 
         async fn on_disconnect(&mut self) -> Result<ClientCloseMode, ezsockets::Error> {
-            info!("ELEVEN LABS disconnect 💔");
+            info!("ELEVEN LABS disconnect");
             Ok(ClientCloseMode::Reconnect)
         }
     }
@@ -2483,12 +2494,14 @@ mod tts {
             &mut self,
             audio_src: NativeAudioSource,
         ) -> anyhow::Result<Client<WSClient>> {
-            let voice_id = "L1oawlP7wF6KPWjLuHcF";
-            let model = "eleven_monolingual_v1";
+            let voice_id = "21m00Tcm4TlvDq8ikWAM";
+            let model = "eleven_turbo_v2";
 
-            let url = url::Url::parse(&format!(
+            let url = url::Url::parse_with_params(&format!(
                 "wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input?model_id={model}"
-            ))
+            ), &[
+                ("optimize_streaming_latency", "3"),
+            ])
             .unwrap();
 
             let config = ClientConfig::new(url)
@@ -2499,16 +2512,13 @@ mod tts {
                         RawMessage::Text(
                             serde_json::to_string(&RegularMessage {
                                 text: "  ".to_string(),
-                                try_trigger_generation: true,
+                                try_trigger_generation: false,
                             })
                             .unwrap(),
                         )
                     }),
                 })
-                .header("xi-api-key", &self.eleven_labs_api_key)
-                .header("Content-Type", "application/json")
-                .header("optimize_streaming_latency", "3")
-                .header("output_format", "pcm_16000");
+                .header("xi-api-key", &self.eleven_labs_api_key);
 
             let (ws_client, future) = ezsockets::connect(
                 |_client| WSClient {
@@ -2521,9 +2531,13 @@ mod tts {
 
             ws_client.text(serde_json::to_string(&BOSMessage {
                 text: " ",
+                try_trigger_generation: true,
                 voice_settings: VoiceSettings {
-                    stability: 0.5,
-                    similarity_boost: false,
+                    stability: 0.8,
+                    similarity_boost: true,
+                },
+                generation_config: GenerationConfig{
+                    chunk_length_schedule: [50],
                 },
             })?)?;
             Ok(ws_client)
@@ -2540,9 +2554,13 @@ mod tts {
                 "" => serde_json::to_string(&EOSMessage { text: "" }),
                 " " => serde_json::to_string(&BOSMessage {
                     text: " ",
+                    try_trigger_generation: true,
                     voice_settings: VoiceSettings {
-                        stability: 0.5,
-                        similarity_boost: false,
+                        stability: 0.8,
+                        similarity_boost: true,
+                    },
+                    generation_config: GenerationConfig{
+                        chunk_length_schedule: [50],
                     },
                 }),
                 msg => serde_json::to_string(&RegularMessage {
@@ -2569,9 +2587,6 @@ mod tts {
     impl Drop for TTS {
         fn drop(&mut self) {
             info!("DROPPING TTS");
-            if let Err(e) = self.send("".to_owned()) {
-                error!("Error shutting down TTS  / Eleven Labs connection | Reason - {e}");
-            };
         }
     }
 }
@@ -2645,14 +2660,14 @@ mod turbo {
         video_frame: Arc<Mutex<VideoFrame<I420Buffer>>>,
     }
 
-    pub struct Turbo {
+    pub struct IMAX {
         camera: Camera,
         engine: Engine,
         scene: Scene,
         target_fps: f32,
     }
 
-    impl Turbo {
+    impl IMAX {
         pub fn new() -> Result<Self> {
             let engine = Engine::new()?;
             let scene = Scene::new(engine.get_vkdevice(), engine.gfx_queue_family_index())?;
@@ -2669,7 +2684,7 @@ mod turbo {
         }
 
         pub fn load_basic_scene(mut self) -> Result<Self> {
-            let donut_model = self.scene.load_gltf("oreo_donut/scene.gltf")?; // , adamHead/adamHead.gltf
+            let donut_model = self.scene.load_gltf("oreo_donut/donut.gltf")?; // , adamHead/adamHead.gltf
             let donut_node = self.scene.create_node(Some(donut_model));
             self.scene.add_node(donut_node);
             Ok(self)
@@ -2829,14 +2844,14 @@ mod turbo {
             || input == "adios"
     }
 
-    impl Drop for Turbo {
+    impl Drop for IMAX {
         fn drop(&mut self) {
             warn!("DROPPED Turbo");
         }
     }
 
-    unsafe impl Send for Turbo {}
-    unsafe impl Sync for Turbo {}
+    unsafe impl Send for IMAX {}
+    unsafe impl Sync for IMAX {}
 }
 
 mod webrtc {
@@ -2862,7 +2877,7 @@ mod webrtc {
         stt::STT,
         track_pub::{publish_tracks, TracksPublicationData},
         tts::TTS,
-        turbo::Turbo,
+        turbo::IMAX,
         utils,
     };
 
@@ -2910,7 +2925,7 @@ mod webrtc {
 
             let openai_client =
                 OPENAI_CLIENT::with_config(OpenAIConfig::new().with_org_id(open_ai_org_id));
-            let mut turbo = Turbo::new()?.load_basic_scene()?;
+            let mut turbo = IMAX::new()?.load_basic_scene()?;
             let stt_cleint = STT::new(gpt_input_tx.clone()).await?;
             let mut tts_client = TTS::new()?;
             tts_client.setup_ws_client(audio_src).await?;
@@ -3095,7 +3110,7 @@ mod routes {
                             Ok(turbo_webrtc) => turbo_webrtc,
                             Err(e) => {
                                 return Resp::InternalServerError()
-                                    .json(ServerMsg::error(format!("{e}")))
+                                    .json(ServerMsg::error(format!("{e:#?}")))
                             }
                         };
 
