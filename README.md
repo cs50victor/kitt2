@@ -21,6 +21,7 @@ https://github.com/cs50victor/kitt2/assets/52110451/ef2f8b61-6870-4e44-8718-0f92
 - [ ] Clean up code
 - [ ] Simplify
 - [ ] Update Docs
+- [ ] Use Mistral ?
 
 ### Credits
 ```
