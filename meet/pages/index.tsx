@@ -20,7 +20,7 @@ function DemoMeetingTab() {
 const Home = () => {
   return (
     <main className={styles.main} data-lk-theme="default">
-        <DemoMeetingTab label="Demo" />
+      <DemoMeetingTab label="Demo" />
     </main>
   );
 };

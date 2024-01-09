@@ -49,7 +49,7 @@ export default async function handleToken(req: NextApiRequest, res: NextApiRespo
     if (!livekitWsUrl) {
       throw Error('Livekit Websocket Url not provided');
     }
-    const hostUrl = livekitWsUrl.replace("wss", "https");
+    const hostUrl = livekitWsUrl.replace('wss', 'https');
     const roomService = new RoomServiceClient(hostUrl, apiKey, apiSecret);
     await createRoomIfItDoesntExist(roomService, roomName);
 
@@ -74,19 +74,18 @@ export default async function handleToken(req: NextApiRequest, res: NextApiRespo
   }
 }
 
-
-const createRoomIfItDoesntExist=async(roomService:RoomServiceClient, roomName: string)=>{
-  const opts : CreateOptions = {
+const createRoomIfItDoesntExist = async (roomService: RoomServiceClient, roomName: string) => {
+  const opts: CreateOptions = {
     name: roomName,
     emptyTimeout: 5 * 60, // 5 minutes
     maxParticipants: 2,
   };
 
   let roomsWithSimilarNames = await roomService.listRooms([roomName]);
-  if(!roomsWithSimilarNames.length){
+  if (!roomsWithSimilarNames.length) {
     const roomInfo = await roomService.createRoom(opts);
-    if (roomInfo){
+    if (roomInfo) {
       console.log('🎉room created - ', roomInfo.name);
-    };
+    }
   }
-}
+};

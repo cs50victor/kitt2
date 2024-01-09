@@ -110,7 +110,8 @@ const ActiveRoom = ({ roomName, userChoices, onLeave }: ActiveRoomProps) => {
   const liveKitUrl = useServerUrl(region as string | undefined);
 
   const worker =
-    typeof window !== 'undefined' && new Worker(new URL('livekit-client/e2ee-worker', import.meta.url));
+    typeof window !== 'undefined' &&
+    new Worker(new URL('livekit-client/e2ee-worker', import.meta.url));
 
   // const e2eeEnabled = !!worker;
   const e2eeEnabled = false;
