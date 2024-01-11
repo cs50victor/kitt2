@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { generateRoomId } from './lib/client-utils';
+import { generateRoomId } from '~/utils/lksdk';
 
 export async function middleware(request: NextRequest) {
   const url = request.nextUrl.clone();

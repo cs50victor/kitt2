@@ -6,9 +6,9 @@ export function getRoomClient(): RoomServiceClient {
 }
 
 export function getLiveKitURL(region?: string | string[]): string {
-  let targetKey = 'LIVEKIT_URL';
+  let targetKey = 'LIVEKIT_WS_URL';
   if (region && !Array.isArray(region)) {
-    targetKey = `LIVEKIT_URL_${region}`.toUpperCase();
+    targetKey = `LIVEKIT_WS_URL_${region}`.toUpperCase();
   }
   const url = process.env[targetKey];
   if (!url) {

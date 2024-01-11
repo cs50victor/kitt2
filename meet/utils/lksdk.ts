@@ -7,10 +7,11 @@ export function useServerUrl(region?: string) {
     if (region) {
       endpoint += `?region=${region}`;
     }
+
     fetch(endpoint).then(async (res) => {
       if (res.ok) {
         const body = await res.json();
-        // console.log(body);
+        console.log(body);
         setServerUrl(body.url);
       } else {
         throw Error('Error fetching server url, check server logs');
@@ -29,7 +30,7 @@ export function decodePassphrase(base64String: string) {
 }
 
 export function generateRoomId(): string {
-  return `${randomString(4)}-${randomString(4)}`;
+  return `${randomString(4)}-${randomString(4)}-${randomString(4)}`;
 }
 
 export function randomString(length: number): string {

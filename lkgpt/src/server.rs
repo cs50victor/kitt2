@@ -1,12 +1,28 @@
+use image::{ImageBuffer, Rgba};
+use livekit::{
+    publication::LocalTrackPublication,
+    webrtc::{
+        audio_source::native::NativeAudioSource,
+        video_frame::{I420Buffer, VideoFrame, VideoRotation},
+        video_source::native::NativeVideoSource,
+    },
+    RoomEvent,
+};
 use log::info;
 
 use actix_web::web;
+use parking_lot::Mutex;
+use tokio::sync::mpsc::UnboundedReceiver;
 
-use std::{borrow::Borrow, fmt::Debug, ops::DerefMut};
+use std::{borrow::Borrow, fmt::Debug, ops::DerefMut, sync::Arc};
 
 use bevy::{ecs::world, prelude::*};
 use livekit_api::access_token::{AccessToken, VideoGrants};
 use serde::{Deserialize, Serialize};
+
+use crate::{
+    LivekitRoom, LIVEKIT_API_KEY_ENV, LIVEKIT_API_SECRET_ENV, LIVEKIT_WS_URL_ENV, OPENAI_ORG_ID_ENV,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ServerMsg<T> {
@@ -50,8 +66,8 @@ pub fn shutdown_bevy_remotely(
 }
 
 pub fn create_bot_token(room_name: String, ai_name: &str) -> anyhow::Result<String> {
-    let api_key = std::env::var("LIVEKIT_API_KEY").unwrap();
-    let api_secret = std::env::var("LIVEKIT_API_SECRET").unwrap();
+    let api_key = std::env::var(LIVEKIT_API_KEY_ENV).unwrap();
+    let api_secret = std::env::var(LIVEKIT_API_SECRET_ENV).unwrap();
 
     let ttl = std::time::Duration::from_secs(60 * 5); // 10 minutes (in sync with frontend)
     Ok(AccessToken::with_api_key(api_key.as_str(), api_secret.as_str())
@@ -71,6 +87,63 @@ pub fn create_bot_token(room_name: String, ai_name: &str) -> anyhow::Result<Stri
             ..Default::default()
         })
         .to_jwt()?)
+}
+
+pub struct RoomData {
+    pub livekit_room: LivekitRoom,
+    pub video_pub: LocalTrackPublication,
+    pub stream_frame_data: crate::StreamingFrameData,
+    pub audio_src: NativeAudioSource,
+    pub audio_pub: LocalTrackPublication,
+}
+
+pub async fn setup_and_connect_to_livekit(
+    participant_room_name: String,
+    video_frame_dimension: (u32, u32),
+) -> anyhow::Result<RoomData> {
+    let lvkt_url = std::env::var(LIVEKIT_WS_URL_ENV).unwrap();
+
+    let bot_name = "kitt";
+
+    // connect to webrtc room
+    let lvkt_token = create_bot_token(participant_room_name, bot_name)?;
+
+    let room_options = livekit::RoomOptions { ..Default::default() };
+
+    let (room, room_events) = livekit::Room::connect(&lvkt_url, &lvkt_token, room_options).await?;
+    let room = std::sync::Arc::new(room);
+
+    info!("Established connection with livekit room. ID -> [{}]", room.name());
+
+    // ************** SETUP OPENAI, TTS, & STT **************
+    let crate::TracksPublicationData { video_pub, video_src, audio_src, audio_pub } =
+        crate::publish_tracks(room.clone(), bot_name).await?;
+
+    let pixel_size = 4;
+
+    let (w, h) = (video_frame_dimension.0 as usize, video_frame_dimension.1 as usize);
+
+    let frame_data = crate::FrameData {
+        image: ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(
+            w as u32,
+            h as u32,
+            vec![0u8; w * h * pixel_size],
+        )
+        .unwrap(),
+        framebuffer: Arc::new(Mutex::new(vec![0u8; w * h * pixel_size])),
+        video_frame: Arc::new(Mutex::new(VideoFrame {
+            rotation: VideoRotation::VideoRotation0,
+            buffer: I420Buffer::new(w as u32, h as u32),
+            timestamp_us: 0,
+        })),
+    };
+
+    let stream_frame_data =
+        crate::StreamingFrameData { pixel_size: pixel_size as u32, video_src, frame_data };
+
+    let livekit_room = LivekitRoom { room, room_events };
+
+    Ok(RoomData { livekit_room, stream_frame_data, video_pub, audio_src, audio_pub })
 }
 
 mod health_check {
@@ -103,13 +176,6 @@ mod lsdk_webhook {
         }
 
         log::info!("SERVER RECEIVED WEBHOOK");
-        let server_data = server_data.lock();
-
-        log::info!("app state {:?}", *server_data.app_state.lock());
-
-        *server_data.app_state.lock() = crate::ParticipantRoomName("testing".to_string());
-
-        log::info!("app state {:?}", *server_data.app_state.lock());
 
         let token_verifier = match access_token::TokenVerifier::new() {
             Ok(i) => i,
@@ -136,7 +202,7 @@ mod lsdk_webhook {
 
         if event.room.is_some() && event.event == "room_started" {
             let livekit_protocol::Room {
-                name: _participant_room_name,
+                name: participant_room_name,
                 max_participants,
                 num_participants,
                 ..
@@ -144,6 +210,14 @@ mod lsdk_webhook {
 
             if num_participants < max_participants {
                 info!("...connecting to room");
+
+                let server_data = server_data.lock();
+
+                log::info!("app state {:#?}", *server_data.app_state);
+
+                *server_data.app_state.lock() = crate::ParticipantRoomName(participant_room_name);
+
+                log::info!("app state {:?}", *server_data.app_state);
 
                 info!("\nSERVER FINISHED PROCESSING ROOM_STARTED WEBHOOK");
             };
@@ -161,13 +235,11 @@ fn top_level_routes(cfg: &mut web::ServiceConfig) {
 }
 
 pub struct ServerResources {
-    pub bot_name: String,
     pub app_state: std::sync::Arc<parking_lot::Mutex<crate::ParticipantRoomName>>,
 }
 
 pub async fn http_server(
     tx: crossbeam_channel::Sender<actix_web::dev::ServerHandle>,
-    bot_name: String,
     app_state: std::sync::Arc<parking_lot::Mutex<crate::ParticipantRoomName>>,
 ) -> std::io::Result<()> {
     // let _ =  setAppState;
@@ -179,7 +251,7 @@ pub async fn http_server(
     info!("starting HTTP server on port {port}");
 
     let server_resources =
-        actix_web::web::Data::new(parking_lot::Mutex::new(ServerResources { bot_name, app_state }));
+        actix_web::web::Data::new(parking_lot::Mutex::new(ServerResources { app_state }));
 
     let server = actix_web::HttpServer::new(move || {
         actix_web::App::new()
@@ -214,7 +286,7 @@ impl bevy::ecs::world::FromWorld for ActixServer {
         let app_state =
             std::sync::Arc::new(parking_lot::Mutex::new(crate::ParticipantRoomName::default()));
 
-        world.insert_resource(crate::AppStateSync { state: app_state.clone() });
+        world.insert_resource(crate::AppStateSync { state: app_state.clone(), dirty: false });
 
         let async_runtime = world.get_resource::<crate::AsyncRuntime>().unwrap();
         // shutdown: ResMut<ShutdownBevyRemotely>
@@ -228,7 +300,7 @@ impl bevy::ecs::world::FromWorld for ActixServer {
         log::info!("spawning thread for server");
 
         std::thread::spawn(move || {
-            let svr = http_server(tx, "kitt".to_string(), app_state);
+            let svr = http_server(tx, app_state);
             if let Err(e) = rt.block_on(svr) {
                 log::info!("Server errored out | Reason {e:#?}");
             };

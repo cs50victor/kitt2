@@ -1,5 +1,6 @@
 use anyhow::bail;
 use async_trait::async_trait;
+use bevy::ecs::system::Resource;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use deepgram::Deepgram;
 use ezsockets::{
@@ -24,7 +25,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use std::io::Cursor;
 
-use crate::stt::STT;
+use crate::{stt::STT, ELEVENLABS_API_KEY_ENV};
 
 #[derive(Serialize)]
 struct VoiceSettings {
@@ -67,7 +68,7 @@ struct ElevenLabs {
     normalizedAlignment: NormalizedAlignment,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Resource)]
 pub struct TTS {
     ws_client: Option<Client<WSClient>>,
     pub started: bool,
@@ -160,7 +161,7 @@ impl ezsockets::ClientExt for WSClient {
 
 impl TTS {
     pub fn new() -> anyhow::Result<Self> {
-        let eleven_labs_api_key = std::env::var("ELEVENLABS_API_KEY").unwrap();
+        let eleven_labs_api_key = std::env::var(ELEVENLABS_API_KEY_ENV).unwrap();
 
         Ok(Self { ws_client: None, started: false, eleven_labs_api_key })
     }
@@ -251,11 +252,5 @@ impl TTS {
         info!("sending to eleven labs {msg}");
 
         Ok(self.ws_client.as_ref().unwrap().text(msg)?.status())
-    }
-}
-
-impl Drop for TTS {
-    fn drop(&mut self) {
-        info!("DROPPING TTS");
     }
 }

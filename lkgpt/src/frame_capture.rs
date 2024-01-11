@@ -188,6 +188,8 @@ pub mod scene {
         prelude::*,
         render::{camera::RenderTarget, renderer::RenderDevice},
     };
+
+    use pollster::FutureExt;
     use wgpu::{Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages};
 
     use super::image_copy::ImageCopier;
@@ -201,7 +203,12 @@ pub mod scene {
     pub struct CaptureFramePlugin;
     impl Plugin for CaptureFramePlugin {
         fn build(&self, app: &mut App) {
-            app.add_systems(PostUpdate, update);
+            app.add_systems(
+                PostUpdate,
+                update
+                    .run_if(resource_exists::<crate::StreamingFrameData>())
+                    .run_if(resource_exists::<crate::AsyncRuntime>()),
+            );
         }
     }
 
@@ -223,6 +230,10 @@ pub mod scene {
                 height,
                 single_image,
             }
+        }
+
+        pub fn dimensions(&self) -> (u32, u32) {
+            (self.width, self.height)
         }
     }
 
@@ -299,13 +310,18 @@ pub mod scene {
     }
 
     fn update(
-        images_to_save: Query<&ImageToSave>,
         mut images: ResMut<Assets<Image>>,
+        images_to_save: Query<&ImageToSave>,
+        async_runtime: Res<crate::AsyncRuntime>,
+        single_frame_data: ResMut<crate::StreamingFrameData>,
         mut scene_controller: ResMut<SceneController>,
-        mut app_exit_writer: EventWriter<AppExit>,
     ) {
         if let SceneState::Render(n) = scene_controller.state {
             if n < 1 {
+                let rt = async_runtime.rt.clone();
+                let single_frame_data = single_frame_data.into_inner();
+                let (w, h) = scene_controller.dimensions();
+                let pixel_size = single_frame_data.pixel_size;
                 for image in images_to_save.iter() {
                     log::info!("Saving image: {:#?}", image.id());
 
@@ -316,61 +332,49 @@ pub mod scene {
                         Err(e) => panic!("Failed to create image buffer {e:?}"),
                     };
 
-                    let images_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("images");
-                    let uuid = bevy::utils::Uuid::new_v4();
-                    let image_path = images_path.join(format!("{uuid}.png"));
-                    if let Err(e) = img.save(image_path) {
-                        panic!("Failed to save image: {}", e);
+                    single_frame_data.frame_data.image = img;
+
+                    if let Err(e) = rt
+                        .spawn_blocking({
+                            let frame_data = single_frame_data.frame_data.clone();
+                            let source = single_frame_data.video_src.clone();
+                            move || {
+                                let img_vec = frame_data.image.as_raw();
+                                let mut framebuffer = frame_data.framebuffer.lock();
+                                let mut video_frame = frame_data.video_frame.lock();
+                                let i420_buffer = &mut video_frame.buffer;
+
+                                let (stride_y, stride_u, stride_v) = i420_buffer.strides();
+                                let (data_y, data_u, data_v) = i420_buffer.data_mut();
+
+                                framebuffer.clone_from_slice(img_vec);
+
+                                livekit::webrtc::native::yuv_helper::abgr_to_i420(
+                                    &framebuffer,
+                                    (w * pixel_size) as u32,
+                                    data_y,
+                                    stride_y,
+                                    data_u,
+                                    stride_u,
+                                    data_v,
+                                    stride_v,
+                                    w as i32,
+                                    h as i32,
+                                );
+
+                                source.capture_frame(&*video_frame);
+                            }
+                        })
+                        .block_on()
+                    {
+                        error!("Error sending video frame to livekit {e}");
+                    } else {
+                        info!("Sent video frame to livekit");
                     };
                 }
-                if scene_controller.single_image {
-                    app_exit_writer.send(AppExit);
-                }
-                /*
-
-                    let image = match ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(w, h, buffer_content) {
-                    Some(img) => img,
-                    None => bail!("Failed to create image buffer"),
-                };
-
-                frame_data.image = image;
-
-                if let Err(e) = tokio::task::spawn_blocking({
-                    let frame_data = frame_data.clone();
-                    let source = livekit_rtc_src.clone();
-                    move || {
-                        let img_vec = frame_data.image.as_raw();
-                        let mut framebuffer = frame_data.framebuffer.lock();
-                        let mut video_frame = frame_data.video_frame.lock();
-                        let i420_buffer = &mut video_frame.buffer;
-
-                        let (stride_y, stride_u, stride_v) = i420_buffer.strides();
-                        let (data_y, data_u, data_v) = i420_buffer.data_mut();
-
-                        framebuffer.clone_from_slice(img_vec);
-
-                        yuv_helper::abgr_to_i420(
-                            &framebuffer,
-                            (FB_WIDTH * PIXEL_SIZE) as u32,
-                            data_y,
-                            stride_y,
-                            data_u,
-                            stride_u,
-                            data_v,
-                            stride_v,
-                            FB_WIDTH as i32,
-                            FB_HEIGHT as i32,
-                        );
-
-                        source.capture_frame(&*video_frame);
-                    }
-                })
-                .await
-                {
-                    error!("Error sending video frame to livekit {e}");
-                };
-
-                    */
+                // if scene_controller.single_image {
+                //     app_exit_writer.send(AppExit);
+                // }
             } else {
                 scene_controller.state = SceneState::Render(n - 1);
             }

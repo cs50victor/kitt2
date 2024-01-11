@@ -6,6 +6,7 @@ import {
   formatChatMessageLinks,
   useToken,
 } from '@livekit/components-react';
+
 import {
   ExternalE2EEKeyProvider,
   LogLevel,
@@ -16,18 +17,15 @@ import {
   VideoPresets,
 } from 'livekit-client';
 
-import type { NextPage } from 'next';
+import '@livekit/components-styles';
+import '@livekit/components-styles/prefabs';
+
 import dynamic from 'next/dynamic';
-import Head from 'next/head';
-import { useRouter } from 'next/router';
 import { useMemo, useState } from 'react';
-import { DebugMode } from '../../lib/Debug';
-import {
-  decodePassphrase,
-  encodePassphrase,
-  randomString,
-  useServerUrl,
-} from '../../lib/client-utils';
+import { DebugMode } from '~/components/Debug';
+import { decodePassphrase, encodePassphrase, randomString, useServerUrl } from '~/utils/lksdk';
+import router from 'next/router';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 const PreJoinNoSSR = dynamic(
   async () => {
@@ -36,9 +34,8 @@ const PreJoinNoSSR = dynamic(
   { ssr: false },
 );
 
-const Home: NextPage = () => {
-  const router = useRouter();
-  const { name: roomName } = router.query;
+export default function Page({ params }: { params: { name: string } }) {
+  const roomName = params.name;
 
   const e2eePassphrase =
     typeof window !== 'undefined' && decodePassphrase(location.hash.substring(1));
@@ -52,43 +49,36 @@ const Home: NextPage = () => {
     setPreJoinChoices(values);
   }
   return (
-    <>
-      <Head>
-        <title>LiveKit Meet</title>
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
-
-      <main data-lk-theme="default">
-        {roomName && !Array.isArray(roomName) && preJoinChoices ? (
-          <ActiveRoom
-            roomName={roomName}
-            userChoices={preJoinChoices}
-            onLeave={() => {
-              router.push('/');
-              router.reload();
+    <main data-lk-theme="default" className="h-screen">
+      {roomName && !Array.isArray(roomName) && preJoinChoices ? (
+        <ActiveRoom
+          roomName={roomName}
+          userChoices={preJoinChoices}
+          onLeave={() => {
+            console.log('leaving room');
+            router.push('/r');
+          }}
+        />
+      ) : (
+        <div className="flex flex-col justify-center items-center h-full">
+          <h1 className="text-4xl font-semibold text-foreground font-display mb-4">Kitt2</h1>
+          <PreJoinNoSSR
+            className="!bg-foreground p-4 rounded-xl"
+            onError={(err) => console.log('error while setting up prejoin', err)}
+            defaults={{
+              username: 'human',
+              videoEnabled: false,
+              audioEnabled: false,
+              e2ee: true,
+              sharedPassphrase: e2eePassphrase || randomString(64),
             }}
-          ></ActiveRoom>
-        ) : (
-          <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}>
-            <PreJoinNoSSR
-              onError={(err) => console.log('error while setting up prejoin', err)}
-              defaults={{
-                username: 'human',
-                videoEnabled: false,
-                audioEnabled: false,
-                e2ee: false,
-                sharedPassphrase: e2eePassphrase || randomString(64),
-              }}
-              onSubmit={handlePreJoinSubmit}
-            ></PreJoinNoSSR>
-          </div>
-        )}
-      </main>
-    </>
+            onSubmit={handlePreJoinSubmit}
+          />
+        </div>
+      )}
+    </main>
   );
-};
-
-export default Home;
+}
 
 type ActiveRoomProps = {
   userChoices: LocalUserChoices;
@@ -104,17 +94,23 @@ const ActiveRoom = ({ roomName, userChoices, onLeave }: ActiveRoomProps) => {
     },
   });
 
-  const router = useRouter();
-  const { region, hq, codec } = router.query;
+  console.log('TOKEN', token);
+
+  const searchParams = useSearchParams();
+  const region = searchParams.get('region');
+  const hq = searchParams.get('hq');
+  const codec = searchParams.get('codec');
+
+  console.log('REGION, HQ, CODEC', region, hq, codec);
 
   const liveKitUrl = useServerUrl(region as string | undefined);
 
   const worker =
     typeof window !== 'undefined' &&
+    userChoices.e2ee &&
     new Worker(new URL('livekit-client/e2ee-worker', import.meta.url));
 
-  // const e2eeEnabled = !!worker;
-  const e2eeEnabled = false;
+  const e2eeEnabled = !!(userChoices.e2ee && worker);
   const keyProvider = new ExternalE2EEKeyProvider();
 
   const roomOptions = useMemo((): RoomOptions => {
