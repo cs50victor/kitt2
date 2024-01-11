@@ -5,7 +5,6 @@
   "scripts": {
     "prepare": "husky install",
     "build": "pnpm --dir=meet build",
-    "ci:bun": "cd meet && bun install && bun run build",
     "dev": "concurrently --names 'WEB,SERVER' -c 'auto' \"pnpm --dir=meet dev\" \"cargo rr --bin lkgpt\"",
     "format": "concurrently --names 'fmt:web,fmt:rs,fmt:toml' -c 'auto' \"pnpm format:prettier\" \"pnpm format:rs\" \"pnpm format:toml\"",
     "format:prettier": "prettier --write \"**/*.{js,ts,tsx}\"",

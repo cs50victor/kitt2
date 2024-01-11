@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "ENVIRONMENT=../.env.local next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -31,6 +31,8 @@
     "@types/react": "18.2.47",
     "@types/react-dom": "18.2.18",
     "autoprefixer": "^10.4.16",
+    "dotenv": "^16.3.1",
+    "env-cmd": "^10.1.0",
     "eslint": "8.56.0",
     "eslint-config-next": "14.0.4",
     "postcss": "^8.4.33",
