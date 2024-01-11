@@ -94,14 +94,10 @@ const ActiveRoom = ({ roomName, userChoices, onLeave }: ActiveRoomProps) => {
     },
   });
 
-  console.log('TOKEN', token);
-
   const searchParams = useSearchParams();
   const region = searchParams.get('region');
   const hq = searchParams.get('hq');
-  const codec = searchParams.get('codec');
-
-  console.log('REGION, HQ, CODEC', region, hq, codec);
+  const codec = searchParams.get('codec') ?? 'vp9';
 
   const liveKitUrl = useServerUrl(region as string | undefined);
 

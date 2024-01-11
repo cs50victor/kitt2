@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getLiveKitURL } from '~/utils/server-utils';
+import { getLiveKitURL } from '~/utils/server';
 
 export async function GET(req: NextRequest) {
   const region = req.nextUrl.searchParams.get('region');
@@ -10,10 +10,9 @@ export async function GET(req: NextRequest) {
 
   try {
     const url = getLiveKitURL(region ?? undefined);
-    console.log(`region: ${region}, url: ${url}`);
     return NextResponse.json({ url });
   } catch (e) {
-    console.error('---->', e);
+    console.error('Couldnt fetch livekit url : ', e);
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }

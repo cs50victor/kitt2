@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useRoomContext } from '@livekit/components-react';
 import { setLogLevel, LogLevel, RemoteTrackPublication } from 'livekit-client';
 import { tinykeys } from 'tinykeys';
-import styles from '../styles/Debug.module.css';
+// import styles from '../styles/Debug.module.css';
 
 export const useDebugMode = ({ logLevel }: { logLevel?: LogLevel }) => {
   setLogLevel(logLevel ?? 'debug');
@@ -75,7 +75,7 @@ export const DebugMode = ({ logLevel }: { logLevel?: LogLevel }) => {
     return <></>;
   } else {
     return (
-      <div className={styles.overlay}>
+      <div className="absolute top-0 bg-gray-900 p-6 min-h-full max-h-screen overflow-y-auto">
         <section id="room-info">
           <h3>
             Room Info {room.name}: {room.sid}
@@ -85,7 +85,7 @@ export const DebugMode = ({ logLevel }: { logLevel?: LogLevel }) => {
           <summary>
             <b>Local Participant: {lp.identity}</b>
           </summary>
-          <details open className={styles.detailsSection}>
+          <details open className="pl-4 [&>div]:pl-4">
             <summary>
               <b>Published tracks</b>
             </summary>
@@ -121,7 +121,7 @@ export const DebugMode = ({ logLevel }: { logLevel?: LogLevel }) => {
               ))}
             </div>
           </details>
-          <details open className={styles.detailsSection}>
+          <details open className="pl-4 [&>div]:pl-4">
             <summary>
               <b>Permissions</b>
             </summary>
@@ -152,7 +152,7 @@ export const DebugMode = ({ logLevel }: { logLevel?: LogLevel }) => {
             <b>Remote Participants</b>
           </summary>
           {Array.from(room.participants.values()).map((p) => (
-            <details key={p.sid} className={styles.detailsSection}>
+            <details key={p.sid} className="pl-4 [&>div]:pl-4">
               <summary>
                 <b>
                   {p.identity}
