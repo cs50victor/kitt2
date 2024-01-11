@@ -32,11 +32,10 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install Dependencies
+      #  Will figure out a better way to do these later
+      - name: Install Global Dependencies
         run: bun install --ignore-scripts
 
-      - name: Build
-        run: bun run build:bun
-
-      # - name: Lint
-      #   run: bun run lint
+      #  Errors out on build when separated into multiple steps
+      - name: Install, Build, and Lint Meet
+        run: cd meet && bun install --ignore-scripts && bun run build && bun run lint
