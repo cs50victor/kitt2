@@ -8,6 +8,7 @@ import { ActiveRoom } from '~/components/ActiveRoom';
 import dynamic from 'next/dynamic';
 import { useState } from 'react';
 
+// Required to access localStorage
 const PreJoinNoSSR = dynamic(
   async () => {
     return (await import('@livekit/components-react')).PreJoin;
