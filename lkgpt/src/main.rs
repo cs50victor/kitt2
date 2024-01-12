@@ -1,4 +1,4 @@
-#![feature(ascii_char, async_closure)]
+#![feature(ascii_char, async_closure, slice_pattern)]
 mod controls;
 mod frame_capture;
 mod llm;
@@ -6,7 +6,6 @@ mod server;
 mod stt;
 mod tts;
 mod video;
-// mod __;
 
 use std::borrow::BorrowMut;
 
@@ -47,7 +46,7 @@ use bevy_gaussian_splatting::{
     GaussianSplattingPlugin,
 };
 
-use stt::STT;
+use stt::{receive_and_process_audio, STT};
 
 use futures::StreamExt;
 use livekit::{
@@ -217,7 +216,7 @@ pub fn handle_room_events(
             },
             // RoomEvents::TrackMuted {} =>{
             // }
-            _ => info!("incoming event {:?}", event),
+            _ => info!("received room event {:?}", event),
         }
     }
 }
@@ -280,17 +279,13 @@ fn setup_gaussian_cloud(
     mut images: ResMut<Assets<Image>>,
     render_device: Res<RenderDevice>,
 ) {
-    let remote_file = Some("");
-    let cloud = match remote_file {
-        Some(filename) => {
-            log::info!("loading {}", filename);
-            asset_server.load(filename.to_string())
-        },
-        None => {
-            log::info!("using test model");
-            gaussian_assets.add(GaussianCloud::test_model())
-        },
-    };
+    // let remote_file = Some("https://huggingface.co/datasets/cs50victor/splats/resolve/main/train/point_cloud/iteration_7000/point_cloud.gcloud");
+    // TODO: figure out how to load remote files later
+    let splat_file = "splats/train/point_cloud/iteration_7000/point_cloud.gcloud";
+    log::info!("loading {}", splat_file);
+    let cloud = asset_server.load(splat_file.to_string());
+
+    // let cloud = gaussian_assets.add(GaussianCloud::test_model());
 
     let render_target = frame_capture::scene::setup_render_target(
         &mut commands,
@@ -307,7 +302,7 @@ fn setup_gaussian_cloud(
         Camera3dBundle {
             transform: Transform::from_translation(Vec3::new(0.0, 1.5, 5.0)),
             tonemapping: Tonemapping::None,
-            camera: Camera { target: render_target, hdr: true, ..default() },
+            camera: Camera { target: render_target, ..default() },
             ..default()
         },
         PanOrbitCamera {
@@ -329,7 +324,6 @@ pub fn sync_bevy_and_server_resources(
 ) {
     if !server_state_clone.dirty {
         let participant_room_name = &(server_state_clone.state.lock().0).clone();
-        log::info!("participant_room_name {:#?}", &participant_room_name);
         if !participant_room_name.is_empty() {
             let rt = async_runtime.rt.clone();
             let video_frame_dimensions = scene_controller.dimensions();
@@ -375,7 +369,7 @@ pub struct AppConfig {
 }
 
 fn main() {
-    dotenvy::dotenv().ok();
+    dotenvy::from_filename_override(".env.local").ok();
 
     // ************** REQUIRED ENV VARS **************
     std::env::var(LIVEKIT_API_SECRET_ENV).expect("LIVEKIT_API_SECRET must be set");
@@ -432,6 +426,7 @@ fn main() {
     app.add_state::<AppState>();
     app.init_resource::<AsyncRuntime>();
     app.init_resource::<server::ActixServer>();
+
     app.init_resource::<frame_capture::scene::SceneController>();
     app.add_event::<frame_capture::scene::SceneController>();
 
@@ -446,8 +441,16 @@ fn main() {
     );
     app.add_systems(
         Update,
+        receive_and_process_audio
+            .run_if(resource_exists::<stt::AudioChannel>())
+            .run_if(resource_exists::<llm::LLMChannel>())
+            .run_if(resource_exists::<STT>()),
+    );
+    app.add_systems(
+        Update,
         llm::run_llm
             .run_if(resource_exists::<llm::LLMChannel>())
+            // .run_if(resource_exists::<tts::TTS>())
             .run_if(in_state(AppState::Active)),
     );
 

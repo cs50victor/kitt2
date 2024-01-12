@@ -5,6 +5,8 @@ target/
 
 # ggml binaries & other binaries in general
 *.bin
+# local splat files
+**/splats/*
 
 # dependencies
 node_modules

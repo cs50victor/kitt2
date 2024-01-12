@@ -231,7 +231,7 @@ mod lsdk_webhook {
 
 fn top_level_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(web::scope("/").service(web::resource("").to(health_check::handler)))
-        .service(web::resource("/livekit-webhook").to(lsdk_webhook::handler));
+        .service(web::resource("/webhooks/livekit").to(lsdk_webhook::handler));
 }
 
 pub struct ServerResources {

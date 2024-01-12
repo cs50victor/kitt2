@@ -27,7 +27,7 @@ bytes = "1.5.0"
 chrono = "0.4.31"
 crossbeam = "0.8.2"
 crossbeam-channel = "0.5.10"
-deepgram = "0.4.0"
+deepgram = { git = "https://github.com/cs50victor/deepgram-rust-sdk.git", branch = "live-fork" }
 dotenvy = "0.15.7"
 ezsockets = { version = "0.6.1", features = ["client"] }
 futures = "0.3.29"
@@ -46,6 +46,6 @@ rodio = { version = "0.17.3", features = ["symphonia-mp3"] }
 serde = { version = "1.0.192", features = ["derive"] }
 serde_json = "1.0.108"
 tokio = { version = "1.33.0", features = ["full"] }
-tokio-tungstenite = { version = "0.20.1", features = ["native-tls"] }
+tokio-tungstenite = { version = "0.21.0", features = ["native-tls"] }
 url = "2.5.0"
 wgpu = { version = "0.17.1", features = ["vulkan-portability"] }

@@ -3,10 +3,3 @@ rr = "run --release"
 
 [target.aarch64-apple-darwin]
 rustflags = ["-C", "link-args=-ObjC"]
-
-# [target.aarch64-apple-darwin]
-# rustflags = [
-#     "-C",
-#     "link-arg=-fuse-ld=/opt/homebrew/opt/llvm/bin/ld64.lld",
-#     "-Zshare-generics=y",
-# ]

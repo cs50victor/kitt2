@@ -244,6 +244,14 @@ pub mod scene {
         Render(u32),
     }
 
+    impl SceneState {
+        pub fn decrement(&mut self) {
+            if let SceneState::Render(n) = self {
+                *n -= 1;
+            }
+        }
+    }
+
     pub fn setup_render_target(
         commands: &mut Commands,
         images: &mut ResMut<Assets<Image>>,
@@ -323,8 +331,6 @@ pub mod scene {
                 let (w, h) = scene_controller.dimensions();
                 let pixel_size = single_frame_data.pixel_size;
                 for image in images_to_save.iter() {
-                    log::info!("Saving image: {:#?}", image.id());
-
                     let img_bytes = images.get_mut(image.id()).unwrap();
 
                     let img = match img_bytes.clone().try_into_dynamic() {
@@ -351,7 +357,7 @@ pub mod scene {
 
                                 livekit::webrtc::native::yuv_helper::abgr_to_i420(
                                     &framebuffer,
-                                    (w * pixel_size) as u32,
+                                    w * pixel_size,
                                     data_y,
                                     stride_y,
                                     data_u,
@@ -368,15 +374,13 @@ pub mod scene {
                         .block_on()
                     {
                         error!("Error sending video frame to livekit {e}");
-                    } else {
-                        info!("Sent video frame to livekit");
                     };
                 }
                 // if scene_controller.single_image {
                 //     app_exit_writer.send(AppExit);
                 // }
             } else {
-                scene_controller.state = SceneState::Render(n - 1);
+                scene_controller.state.decrement();
             }
         }
     }

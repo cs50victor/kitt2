@@ -25,7 +25,6 @@ jobs:
       fail-fast: false
       matrix:
         rust-toolchain:
-          # - nightly-2023-09-20
           - nightly
 
     steps:

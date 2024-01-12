@@ -42,7 +42,7 @@ impl FromWorld for LLMChannel {
 pub fn run_llm(
     llm_channel: ResMut<LLMChannel>,
     async_runtime: Res<crate::AsyncRuntime>,
-    mut tts_client: Res<crate::tts::TTS>,
+    // mut tts_client: Res<crate::tts::TTS>,
 ) {
     let splitters = ['.', ',', '?', '!', ';', ':', '—', '-', ')', ']', '}', ' '];
 
@@ -54,9 +54,9 @@ pub fn run_llm(
 
     let text_chat_prefix = "[chat]";
     // let text_latency = Duration::from_millis(500);
-    let rt = async_runtime.rt.clone();
 
     while let Ok(chunk) = llm_channel.rx.try_recv() {
+        log::info!("\n\n\nchunk gotten from llm channel");
         txt_buffer.push_str(&chunk);
         if txt_buffer.starts_with(text_chat_prefix) || ends_with_splitter(&splitters, &txt_buffer) {
             let request = openai_req
@@ -71,7 +71,7 @@ pub fn run_llm(
                 .build()
                 .unwrap();
 
-            rt.block_on(async {
+            async_runtime.rt.block_on(async {
                 let mut gpt_resp_stream =
                     llm_channel.client.chat().create_stream(request).await.unwrap();
                 while let Some(result) = gpt_resp_stream.next().await {
