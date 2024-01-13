@@ -31,11 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={tw(
-        'font-display h-full min-h-screen antialiased',
-        inter.variable,
-        display.variable,
-      )}
+      className={tw('font-display h-full min-h-dvh antialiased', inter.variable, display.variable)}
     >
       <body>
         {children}

@@ -1,12 +1,12 @@
 import defaultTheme from 'tailwindcss/defaultTheme';
 import plugin from 'tailwindcss/plugin';
-
+// #D5A
 export const shadcnPlugin = plugin(
   // Add CSS variable definitions to the base layer
   function ({ addBase }) {
     addBase({
       ':root': {
-        '--brand': '240 10% 3.9%',
+        '--brand': '8 80% 64%',
         '--background': '0 0% 100%',
         '--foreground': '240 10% 3.9%',
         '--card': '0 0% 100%',
@@ -29,7 +29,7 @@ export const shadcnPlugin = plugin(
         '--radius': '0.5rem',
       },
       '.dark': {
-        '--brand': '0 0% 98%',
+        '--brand': '8 80% 64%',
         '--background': '240 10% 3.9%',
         '--foreground': '0 0% 98%',
         '--card': '240 10% 3.9%',
@@ -56,7 +56,7 @@ export const shadcnPlugin = plugin(
         '@apply border-border': {},
       },
       body: {
-        '@apply bg-background text-foreground': {},
+        '@apply bg-foreground text-background': {},
       },
     });
   },

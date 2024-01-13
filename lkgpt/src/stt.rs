@@ -22,12 +22,12 @@ use url::Url;
 use crate::{AsyncRuntime, DEEPGRAM_API_KEY_ENV};
 
 #[derive(Resource)]
-pub struct AudioChannel {
+pub struct AudioInputChannel {
     pub tx: crossbeam_channel::Sender<Vec<i16>>,
     rx: crossbeam_channel::Receiver<Vec<i16>>,
 }
 
-impl FromWorld for AudioChannel {
+impl FromWorld for AudioInputChannel {
     fn from_world(_: &mut World) -> Self {
         let (tx, rx) = crossbeam_channel::unbounded::<Vec<i16>>();
         Self { tx, rx }
@@ -38,7 +38,6 @@ impl FromWorld for AudioChannel {
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Resource)]
 pub struct STT {
-    // tx: SplitSink<DeepgramLive, &'static[u8]>,
     tx: SplitSink<DeepgramLive, Vec<u8>>,
     rx: crossbeam_channel::Receiver<String>,
 }
@@ -61,9 +60,8 @@ impl STT {
 impl FromWorld for STT {
     fn from_world(world: &mut World) -> Self {
         let async_rt = world.get_resource::<AsyncRuntime>().unwrap();
-        let rt = async_rt.rt.clone();
 
-        let ws = match rt.block_on(async { connect_to_deepgram().await }) {
+        let ws = match async_rt.rt.block_on(async { connect_to_deepgram().await }) {
             Ok(ws) => ws,
             Err(e) => panic!("Failed to connect to Deepgram: {}", e),
         };
@@ -73,7 +71,7 @@ impl FromWorld for STT {
         // let k = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>
         let (tx, rx) = crossbeam_channel::unbounded();
 
-        rt.spawn(async move {
+        async_rt.rt.spawn(async move {
             while let Some(Ok(resp)) = socket_stream.next().await {
                 match resp {
                     Response::Results(result) => {
@@ -119,13 +117,13 @@ async fn connect_to_deepgram() -> anyhow::Result<DeepgramLive> {
 
 // SYSTEM
 pub fn receive_and_process_audio(
-    audio_channel: Res<AudioChannel>,
+    audio_channel: Res<AudioInputChannel>,
     llm_channel: Res<crate::llm::LLMChannel>,
     mut stt_websocket: ResMut<STT>,
     async_runtime: Res<AsyncRuntime>,
 ) {
-    log::info!("Deepgram is listening for audio");
     while let Ok(audio_buffer) = audio_channel.rx.try_recv() {
+        log::info!("receiving audio");
         let sample_bytes =
             audio_buffer.into_iter().flat_map(|sample| sample.to_le_bytes()).collect::<Vec<u8>>();
 

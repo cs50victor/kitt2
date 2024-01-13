@@ -326,7 +326,6 @@ pub mod scene {
     ) {
         if let SceneState::Render(n) = scene_controller.state {
             if n < 1 {
-                let rt = async_runtime.rt.clone();
                 let single_frame_data = single_frame_data.into_inner();
                 let (w, h) = scene_controller.dimensions();
                 let pixel_size = single_frame_data.pixel_size;
@@ -340,7 +339,8 @@ pub mod scene {
 
                     single_frame_data.frame_data.image = img;
 
-                    if let Err(e) = rt
+                    if let Err(e) = async_runtime
+                        .rt
                         .spawn_blocking({
                             let frame_data = single_frame_data.frame_data.clone();
                             let source = single_frame_data.video_src.clone();

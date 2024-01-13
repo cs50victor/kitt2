@@ -37,9 +37,28 @@ export default function LivekitRoom({ params }: { params: { name: string } }) {
         <ActiveRoom roomName={roomName} userChoices={preJoinChoices} />
       ) : (
         <div className="flex flex-col justify-center items-center h-full">
-          <h1 className="text-4xl font-semibold text-foreground font-display mb-4">Kitt2</h1>
+          <h1 className="text-4xl font-semibold font-display text-brand mb-4">Kitt2</h1>
           <PreJoinNoSSR
-            className="!bg-foreground p-4 rounded-xl"
+            className="p-4 rounded-xl
+            [&*.lk-camera-off-note]:bg-cyan-950
+            [&*.lk-camera-off-note>svg]:stroke-black
+            [&*.lk-camera-off-note>svg>path]:fill-gray-300
+            [&*.lk-camera-off-note]:rounded-full
+            [&*.lk-camera-off-note]:overflow-hidden
+            [&*.lk-camera-off-note]:border
+
+            [&*.lk-button-group-container]:flex
+            [&*.lk-button-group-container]:flex-col
+            [&*.lk-button-group-container]:my-8
+            [&*.lk-button-group-container]:space-y-4
+            
+            [&*.lk-username-container]:flex
+            [&*.lk-username-container]:flex-col
+            [&*.lk-username-container]:my-8
+            [&*.lk-username-container]:space-y-4
+            
+            [&*.lk-button-group>button]:w-full
+            "
             onError={(err) => console.log('error while setting up prejoin', err)}
             defaults={{
               username: 'human',

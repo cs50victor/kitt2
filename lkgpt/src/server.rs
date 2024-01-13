@@ -289,8 +289,6 @@ impl bevy::ecs::world::FromWorld for ActixServer {
         world.insert_resource(crate::AppStateSync { state: app_state.clone(), dirty: false });
 
         let async_runtime = world.get_resource::<crate::AsyncRuntime>().unwrap();
-        // shutdown: ResMut<ShutdownBevyRemotely>
-        let rt = async_runtime.rt.clone();
 
         let (tx, rx) = crossbeam_channel::unbounded::<actix_web::dev::ServerHandle>();
 
@@ -298,6 +296,8 @@ impl bevy::ecs::world::FromWorld for ActixServer {
         let shutdown_bev_tx = shutdown_bev.tx.clone();
 
         log::info!("spawning thread for server");
+
+        let rt = async_runtime.rt.clone();
 
         std::thread::spawn(move || {
             let svr = http_server(tx, app_state);

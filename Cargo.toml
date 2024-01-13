@@ -2,7 +2,7 @@
 resolver = "2"
 members = ["lkgpt"]
 
-package.rust-version = "1.74.0"
+package.rust-version = "1.75.0"
 
 [profile.dev]
 opt-level = 1 # Small amount of optimizations

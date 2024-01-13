@@ -19,6 +19,11 @@ pub struct LLMChannel {
     pub tx: crossbeam_channel::Sender<String>,
     pub rx: crossbeam_channel::Receiver<String>,
     pub client: Client<OpenAIConfig>,
+    pub splitters: [char; 12],
+    pub txt_buffer: String,
+    pub tts_buffer: String,
+    pub req_args: CreateChatCompletionRequestArgs,
+    pub text_chat_prefix: &'static str,
 }
 
 impl FromWorld for LLMChannel {
@@ -31,7 +36,25 @@ impl FromWorld for LLMChannel {
             async_openai::config::OpenAIConfig::new().with_org_id(open_ai_org_id),
         );
 
-        Self { tx, rx, client: openai_client }
+        let splitters = ['.', ',', '?', '!', ';', ':', '—', '-', ')', ']', '}', ' '];
+
+        let txt_buffer = String::new();
+        let tts_buffer = String::new();
+
+        let req_args = CreateChatCompletionRequestArgs::default();
+
+        let text_chat_prefix = "[chat]";
+
+        Self {
+            tx,
+            rx,
+            client: openai_client,
+            splitters,
+            txt_buffer,
+            tts_buffer,
+            req_args,
+            text_chat_prefix,
+        }
     }
 }
 
@@ -40,30 +63,26 @@ impl FromWorld for LLMChannel {
 /// the stream will wait for more text.
 /// Used during input streaming to chunk text blocks and set last char to space
 pub fn run_llm(
-    llm_channel: ResMut<LLMChannel>,
+    mut llm_channel: ResMut<LLMChannel>,
     async_runtime: Res<crate::AsyncRuntime>,
     // mut tts_client: Res<crate::tts::TTS>,
 ) {
-    let splitters = ['.', ',', '?', '!', ';', ':', '—', '-', ')', ']', '}', ' '];
-
-    let mut txt_buffer = String::new();
-    let mut tts_buffer = String::new();
-
-    let mut req_args = CreateChatCompletionRequestArgs::default();
-    let openai_req = req_args.model("gpt-4-1106-preview").max_tokens(512u16);
-
-    let text_chat_prefix = "[chat]";
-    // let text_latency = Duration::from_millis(500);
-
     while let Ok(chunk) = llm_channel.rx.try_recv() {
-        log::info!("\n\n\nchunk gotten from llm channel");
-        txt_buffer.push_str(&chunk);
-        if txt_buffer.starts_with(text_chat_prefix) || ends_with_splitter(&splitters, &txt_buffer) {
-            let request = openai_req
+        log::info!("\n\n\nchunk gotten from llm channel, {chunk}");
+        llm_channel.txt_buffer.push_str(&chunk);
+        if llm_channel.txt_buffer.starts_with(llm_channel.text_chat_prefix)
+            || ends_with_splitter(&llm_channel.splitters, &llm_channel.txt_buffer)
+        {
+            let (txt_buffer, prefix) =
+                (llm_channel.txt_buffer.clone(), llm_channel.text_chat_prefix);
+            let request = llm_channel
+                .req_args
+                .model("gpt-4-1106-preview")
+                .max_tokens(512u16)
                 .messages([ChatCompletionRequestUserMessageArgs::default()
                     .content(ChatCompletionRequestUserMessageContent::Text(remove_prefix(
-                        &txt_buffer,
-                        text_chat_prefix,
+                        txt_buffer.as_str(),
+                        prefix,
                     )))
                     .build()
                     .unwrap()
@@ -79,10 +98,13 @@ pub fn run_llm(
                         Ok(response) => {
                             for chat_choice in response.choices {
                                 if let Some(content) = chat_choice.delta.content {
-                                    tts_buffer.push_str(&content);
-                                    if ends_with_splitter(&splitters, &tts_buffer) {
+                                    llm_channel.tts_buffer.push_str(&content);
+                                    if ends_with_splitter(
+                                        &llm_channel.splitters,
+                                        &llm_channel.tts_buffer,
+                                    ) {
                                         let msg = {
-                                            let txt = tts_buffer.clone();
+                                            let txt = llm_channel.tts_buffer.clone();
                                             txt.trim().to_owned()
                                         };
                                         log::info!("GPT: {msg}");
@@ -101,7 +123,7 @@ pub fn run_llm(
                     }
                 }
             });
-            txt_buffer.clear();
+            llm_channel.txt_buffer.clear();
         }
     }
 }
