@@ -12,7 +12,7 @@ use bevy::ecs::{
 };
 use futures::StreamExt;
 
-use crate::OPENAI_ORG_ID_ENV;
+use crate::OPENAI_ORG_ID;
 
 #[derive(Resource)]
 pub struct LLMChannel {
@@ -28,7 +28,7 @@ pub struct LLMChannel {
 
 impl FromWorld for LLMChannel {
     fn from_world(_world: &mut World) -> Self {
-        let open_ai_org_id = std::env::var(OPENAI_ORG_ID_ENV).unwrap();
+        let open_ai_org_id = std::env::var(OPENAI_ORG_ID).unwrap();
 
         let (tx, rx) = crossbeam_channel::unbounded::<String>();
 
@@ -65,7 +65,7 @@ impl FromWorld for LLMChannel {
 pub fn run_llm(
     mut llm_channel: ResMut<LLMChannel>,
     async_runtime: Res<crate::AsyncRuntime>,
-    // mut tts_client: Res<crate::tts::TTS>,
+    mut tts_client: ResMut<crate::tts::TTS>,
 ) {
     while let Ok(chunk) = llm_channel.rx.try_recv() {
         log::info!("\n\n\nchunk gotten from llm channel, {chunk}");
@@ -108,11 +108,13 @@ pub fn run_llm(
                                             txt.trim().to_owned()
                                         };
                                         log::info!("GPT: {msg}");
-                                        // if let Err(e) = tts_client.send(msg) {
-                                        //     error!("Coudln't send gpt text chunk to tts channel - {e}");
-                                        // } else {
-                                        //     tts_buffer.clear();
-                                        // };
+                                        if let Err(e) = tts_client.send(msg) {
+                                            log::error!(
+                                                "Coudln't send gpt text chunk to tts channel - {e}"
+                                            );
+                                        } else {
+                                            llm_channel.tts_buffer.clear();
+                                        };
                                     }
                                 };
                             }

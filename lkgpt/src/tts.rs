@@ -25,7 +25,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use std::io::Cursor;
 
-use crate::{stt::STT, ELEVENLABS_API_KEY_ENV};
+use crate::{stt::STT, ELEVENLABS_API_KEY};
 
 #[derive(Serialize)]
 struct VoiceSettings {
@@ -64,10 +64,11 @@ struct NormalizedAlignment {
 }
 struct ElevenLabs {
     audio: String,
-    isFinal: bool,
-    normalizedAlignment: NormalizedAlignment,
+    is_final: bool,
+    normalized_alignment: NormalizedAlignment,
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Resource)]
 pub struct TTS {
     ws_client: Option<Client<WSClient>>,
@@ -131,6 +132,8 @@ impl ezsockets::ClientExt for WSClient {
     }
 
     async fn on_connect(&mut self) -> Result<(), ezsockets::Error> {
+        let mut tts = self.tts_client_ref.lock();
+        tts.started = true;
         info!("ELEVEN LABS CONNECTED 🎉");
         Ok(())
     }
@@ -161,7 +164,7 @@ impl ezsockets::ClientExt for WSClient {
 
 impl TTS {
     pub fn new() -> anyhow::Result<Self> {
-        let eleven_labs_api_key = std::env::var(ELEVENLABS_API_KEY_ENV).unwrap();
+        let eleven_labs_api_key = std::env::var(ELEVENLABS_API_KEY).unwrap();
 
         Ok(Self { ws_client: None, started: false, eleven_labs_api_key })
     }
@@ -174,7 +177,7 @@ impl TTS {
     }
 
     async fn connect_ws_client(
-        &mut self,
+        &self,
         audio_src: NativeAudioSource,
     ) -> anyhow::Result<Client<WSClient>> {
         let voice_id = "21m00Tcm4TlvDq8ikWAM";
@@ -204,7 +207,7 @@ impl TTS {
             })
             .header("xi-api-key", &self.eleven_labs_api_key);
 
-        let (ws_client, future) = ezsockets::connect(
+        let (ws_client, _) = ezsockets::connect(
             |_client| WSClient { audio_src, tts_client_ref: Arc::new(Mutex::new(self.clone())) },
             config,
         )
@@ -253,4 +256,19 @@ impl TTS {
 
         Ok(self.ws_client.as_ref().unwrap().text(msg)?.status())
     }
+}
+
+impl Drop for TTS {
+    fn drop(&mut self) {
+        info!("DROPPING TTS");
+        if let Err(e) = self.send("".to_owned()) {
+            error!("Error shutting down TTS  / Eleven Labs connection | Reason - {e}");
+        };
+    }
+}
+
+pub async fn create_tts(audio_src: NativeAudioSource) -> anyhow::Result<TTS> {
+    let mut tts = TTS::new()?;
+    tts.setup_ws_client(audio_src).await?;
+    Ok(tts)
 }

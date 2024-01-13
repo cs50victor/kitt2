@@ -218,18 +218,11 @@ pub mod scene {
         name: String,
         width: u32,
         height: u32,
-        single_image: bool,
     }
 
     impl SceneController {
-        pub fn new(width: u32, height: u32, single_image: bool) -> SceneController {
-            SceneController {
-                state: SceneState::BuildScene,
-                name: String::from(""),
-                width,
-                height,
-                single_image,
-            }
+        pub fn new(width: u32, height: u32) -> SceneController {
+            SceneController { state: SceneState::BuildScene, name: String::from(""), width, height }
         }
 
         pub fn dimensions(&self) -> (u32, u32) {

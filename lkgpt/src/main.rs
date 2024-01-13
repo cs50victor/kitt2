@@ -66,15 +66,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     controls::WorldControlChannel, llm::LLMChannel, server::RoomData, stt::AudioInputChannel,
-    video::VideoChannel,
+    tts::create_tts, video::VideoChannel,
 };
 
-pub const LIVEKIT_API_SECRET_ENV: &str = "LIVEKIT_API_SECRET";
-pub const LIVEKIT_API_KEY_ENV: &str = "LIVEKIT_API_KEY";
-pub const LIVEKIT_WS_URL_ENV: &str = "LIVEKIT_WS_URL";
-pub const OPENAI_ORG_ID_ENV: &str = "OPENAI_ORG_ID";
-pub const DEEPGRAM_API_KEY_ENV: &str = "DEEPGRAM_API_KEY";
-pub const ELEVENLABS_API_KEY_ENV: &str = "ELEVENLABS_API_KEY";
+pub const LIVEKIT_API_SECRET: &str = "LIVEKIT_API_SECRET";
+pub const LIVEKIT_API_KEY: &str = "LIVEKIT_API_KEY";
+pub const LIVEKIT_WS_URL: &str = "LIVEKIT_WS_URL";
+pub const OPENAI_ORG_ID: &str = "OPENAI_ORG_ID";
+pub const DEEPGRAM_API_KEY: &str = "DEEPGRAM_API_KEY";
+pub const ELEVENLABS_API_KEY: &str = "ELEVENLABS_API_KEY";
 
 #[derive(Resource)]
 pub struct AsyncRuntime {
@@ -366,19 +366,23 @@ pub fn sync_bevy_and_server_resources(
                     let RoomData {
                         livekit_room,
                         stream_frame_data,
-                        video_pub,
                         audio_src,
+                        video_pub,
                         audio_pub,
                     } = room_data;
 
                     info!("initializing required bevy resources");
+                    let tts = async_runtime.rt.block_on(create_tts(audio_src)).unwrap();
+
                     commands.init_resource::<LLMChannel>();
                     commands.init_resource::<WorldControlChannel>();
                     commands.init_resource::<AudioInputChannel>();
                     commands.init_resource::<STT>();
                     commands.init_resource::<VideoChannel>();
+                    commands.insert_resource(tts);
                     commands.insert_resource(stream_frame_data);
                     commands.insert_resource(livekit_room);
+
                     set_app_state.set(AppState::Active);
                     server_state_clone.dirty = true;
                 },
@@ -393,19 +397,18 @@ pub fn sync_bevy_and_server_resources(
 pub struct AppConfig {
     pub width: u32,
     pub height: u32,
-    pub single_image: bool,
 }
 
 fn main() {
     dotenvy::from_filename_override(".env.local").ok();
 
     // ************** REQUIRED ENV VARS **************
-    std::env::var(LIVEKIT_API_SECRET_ENV).expect("LIVEKIT_API_SECRET must be set");
-    std::env::var(LIVEKIT_API_KEY_ENV).expect("LIVEKIT_API_KEY must be set");
-    std::env::var(LIVEKIT_WS_URL_ENV).expect("LIVEKIT_WS_URL is not set");
-    std::env::var(OPENAI_ORG_ID_ENV).expect("OPENAI_ORG_ID must be set");
-    std::env::var(DEEPGRAM_API_KEY_ENV).expect("DEEPGRAM_API_KEY must be set");
-    std::env::var(ELEVENLABS_API_KEY_ENV).expect("ELEVENLABS_API_KEY must be set");
+    std::env::var(LIVEKIT_API_SECRET).expect("LIVEKIT_API_SECRET must be set");
+    std::env::var(LIVEKIT_API_KEY).expect("LIVEKIT_API_KEY must be set");
+    std::env::var(LIVEKIT_WS_URL).expect("LIVEKIT_WS_URL is not set");
+    std::env::var(OPENAI_ORG_ID).expect("OPENAI_ORG_ID must be set");
+    std::env::var(DEEPGRAM_API_KEY).expect("DEEPGRAM_API_KEY must be set");
+    std::env::var(ELEVENLABS_API_KEY).expect("ELEVENLABS_API_KEY must be set");
 
     let mut formatted_builder = pretty_env_logger::formatted_builder();
 
@@ -423,14 +426,10 @@ fn main() {
 
     let mut app = App::new();
 
-    let config = AppConfig { width: 1920, height: 1080, single_image: true };
+    let config = AppConfig { width: 1920, height: 1080 };
 
     // setup frame capture
-    app.insert_resource(frame_capture::scene::SceneController::new(
-        config.width,
-        config.height,
-        config.single_image,
-    ));
+    app.insert_resource(frame_capture::scene::SceneController::new(config.width, config.height));
     app.insert_resource(ClearColor(Color::rgb_u8(0, 0, 0)));
 
     app.add_plugins((
@@ -479,7 +478,7 @@ fn main() {
         Update,
         llm::run_llm
             .run_if(resource_exists::<llm::LLMChannel>())
-            // .run_if(resource_exists::<tts::TTS>())
+            .run_if(resource_exists::<tts::TTS>())
             .run_if(in_state(AppState::Active)),
     );
 

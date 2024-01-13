@@ -20,9 +20,7 @@ use bevy::{ecs::world, prelude::*};
 use livekit_api::access_token::{AccessToken, VideoGrants};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    LivekitRoom, LIVEKIT_API_KEY_ENV, LIVEKIT_API_SECRET_ENV, LIVEKIT_WS_URL_ENV, OPENAI_ORG_ID_ENV,
-};
+use crate::{LivekitRoom, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_WS_URL, OPENAI_ORG_ID};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ServerMsg<T> {
@@ -66,8 +64,8 @@ pub fn shutdown_bevy_remotely(
 }
 
 pub fn create_bot_token(room_name: String, ai_name: &str) -> anyhow::Result<String> {
-    let api_key = std::env::var(LIVEKIT_API_KEY_ENV).unwrap();
-    let api_secret = std::env::var(LIVEKIT_API_SECRET_ENV).unwrap();
+    let api_key = std::env::var(LIVEKIT_API_KEY).unwrap();
+    let api_secret = std::env::var(LIVEKIT_API_SECRET).unwrap();
 
     let ttl = std::time::Duration::from_secs(60 * 5); // 10 minutes (in sync with frontend)
     Ok(AccessToken::with_api_key(api_key.as_str(), api_secret.as_str())
@@ -101,7 +99,7 @@ pub async fn setup_and_connect_to_livekit(
     participant_room_name: String,
     video_frame_dimension: (u32, u32),
 ) -> anyhow::Result<RoomData> {
-    let lvkt_url = std::env::var(LIVEKIT_WS_URL_ENV).unwrap();
+    let lvkt_url = std::env::var(LIVEKIT_WS_URL).unwrap();
 
     let bot_name = "kitt";
 

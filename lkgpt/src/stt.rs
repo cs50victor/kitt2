@@ -19,7 +19,7 @@ use futures::{
 use tokio_tungstenite::tungstenite::{self, http};
 use url::Url;
 
-use crate::{AsyncRuntime, DEEPGRAM_API_KEY_ENV};
+use crate::{AsyncRuntime, DEEPGRAM_API_KEY};
 
 #[derive(Resource)]
 pub struct AudioInputChannel {
@@ -93,7 +93,7 @@ impl FromWorld for STT {
 }
 
 async fn connect_to_deepgram() -> anyhow::Result<DeepgramLive> {
-    let deepgram_api_key = std::env::var(DEEPGRAM_API_KEY_ENV).unwrap();
+    let deepgram_api_key = std::env::var(DEEPGRAM_API_KEY).unwrap();
 
     let dg_client = Deepgram::new(&deepgram_api_key)?;
     let options = Options::builder()
