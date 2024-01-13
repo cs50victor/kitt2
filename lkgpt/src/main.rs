@@ -7,25 +7,14 @@ mod stt;
 mod tts;
 mod video;
 
-use std::{
-    borrow::BorrowMut,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
 };
 
-use async_openai::{
-    config::OpenAIConfig,
-    types::{
-        ChatCompletionRequestUserMessageArgs, ChatCompletionRequestUserMessageContent,
-        CreateChatCompletionRequestArgs,
-    },
-    Client,
-};
 use chrono::Utc;
 use frame_capture::scene::SceneController;
-use livekit::{publication::LocalTrackPublication, Room};
+use livekit::{publication::LocalTrackPublication, webrtc::video_frame::VideoBuffer, Room};
 // use actix_web::{middleware, web::Data, App, HttpServer};
 use log::info;
 
@@ -40,18 +29,13 @@ use livekit::{
     RoomError,
 };
 
-use async_openai::Client as OPENAI_CLIENT;
-
 use bevy::{
     app::ScheduleRunnerPlugin, core::Name, core_pipeline::tonemapping::Tonemapping, log::LogPlugin,
     prelude::*, render::renderer::RenderDevice, time::common_conditions::on_timer,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
-use bevy_gaussian_splatting::{
-    random_gaussians, utils::get_arg, GaussianCloud, GaussianSplattingBundle,
-    GaussianSplattingPlugin,
-};
+use bevy_gaussian_splatting::{GaussianCloud, GaussianSplattingBundle, GaussianSplattingPlugin};
 
 use stt::{receive_and_process_audio, STT};
 
@@ -90,8 +74,6 @@ impl FromWorld for AsyncRuntime {
 
 #[derive(Clone)]
 struct FrameData {
-    image: image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
-    framebuffer: std::sync::Arc<parking_lot::Mutex<Vec<u8>>>,
     video_frame: std::sync::Arc<
         parking_lot::Mutex<
             livekit::webrtc::video_frame::VideoFrame<livekit::webrtc::video_frame::I420Buffer>,
@@ -161,7 +143,7 @@ pub fn handle_room_events(
     async_runtime: Res<AsyncRuntime>,
     llm_channel: Res<llm::LLMChannel>,
     audio_channel: Res<stt::AudioInputChannel>,
-    video_channel: Res<video::VideoChannel>,
+    _video_channel: Res<video::VideoChannel>,
     audio_syncer: ResMut<AudioSync>,
     mut room_events: ResMut<LivekitRoom>,
 ) {
@@ -198,19 +180,41 @@ pub fn handle_room_events(
                         let mut video_stream = NativeVideoStream::new(video_rtc_track);
                         async_runtime.rt.spawn(async move {
                             while let Some(frame) = video_stream.next().await {
-                                let c = frame.buffer.to_i420();
+                                // frame.buffer.to_argb(format, dst, dst_stride, dst_width, dst_height)
+                                let _video_frame_buffer = frame.buffer.to_i420();
+                                // let width: u32 = video_frame_buffer.width();
+                                // let height: u32 = video_frame_buffer.height();
+                                // let rgba_stride = video_frame_buffer.width() * 4;
+
+                                // let (stride_y, stride_u, stride_v) = video_frame_buffer.strides();
+                                // let (data_y, data_u, data_v) = video_frame_buffer.data();
+
                                 // livekit::webrtc::native::yuv_helper::i420_to_rgba(
-                                //     c,
-                                //     frame.width,
-                                //     frame.height,
-                                //     frame.width,
-                                //     frame.height,
-                                //     video_track.rotation,
-                                //     video_track.flip,
+                                //     data_y,
+                                //     stride_y,
+                                //     data_u,
+                                //     stride_u,
+                                //     data_v,
+                                //     stride_v,
+                                //     rgba_ptr,
+                                //     rgba_stride,
+                                //     video_frame_buffer.width() as i32,
+                                //     video_frame_buffer.height() as i32,
                                 // );
+
                                 // if let Err(e)= audio_channel_tx.send(frame.data.to_vec()){
                                 //     log::error!("Couldn't send audio frame to stt {e}");
                                 // };
+
+                                /*
+                                    image: image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
+                                    framebuffer: std::sync::Arc<parking_lot::Mutex<Vec<u8>>>,
+                                    video_frame: std::sync::Arc<
+                                        parking_lot::Mutex<
+                                            livekit::webrtc::video_frame::VideoFrame<livekit::webrtc::video_frame::I420Buffer>,
+                                        >,
+                                    >,
+                                */
                             }
                         });
                     },
@@ -239,10 +243,10 @@ pub fn handle_room_events(
                 }
             },
             // ignoring the participant for now, currently assuming there is only one participant
-            RoomEvent::TrackMuted { participant, publication } => {
+            RoomEvent::TrackMuted { participant: _, publication: _ } => {
                 audio_syncer.should_stop.store(true, Ordering::Relaxed);
             },
-            RoomEvent::TrackUnmuted { participant, publication } => {
+            RoomEvent::TrackUnmuted { participant: _, publication: _ } => {
                 audio_syncer.should_stop.store(false, Ordering::Relaxed);
             },
             _ => info!("received room event {:?}", event),
@@ -260,6 +264,7 @@ pub struct TracksPublicationData {
 pub async fn publish_tracks(
     room: std::sync::Arc<Room>,
     bot_name: &str,
+    video_frame_dimension: (u32, u32),
 ) -> Result<TracksPublicationData, RoomError> {
     let audio_src = NativeAudioSource::new(
         AudioSourceOptions::default(),
@@ -270,7 +275,7 @@ pub async fn publish_tracks(
     let audio_track =
         LocalAudioTrack::create_audio_track(bot_name, RtcAudioSource::Native(audio_src.clone()));
 
-    let (width, height) = (1920, 1080);
+    let (width, height) = video_frame_dimension;
     let video_src =
         NativeVideoSource::new(livekit::webrtc::video_source::VideoResolution { width, height });
     let video_track =
@@ -303,7 +308,7 @@ pub async fn publish_tracks(
 fn setup_gaussian_cloud(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut gaussian_assets: ResMut<Assets<GaussianCloud>>,
+    _gaussian_assets: ResMut<Assets<GaussianCloud>>,
     mut scene_controller: ResMut<frame_capture::scene::SceneController>,
     mut images: ResMut<Assets<Image>>,
     render_device: Res<RenderDevice>,
@@ -349,7 +354,7 @@ pub fn sync_bevy_and_server_resources(
     async_runtime: Res<AsyncRuntime>,
     mut server_state_clone: ResMut<AppStateSync>,
     mut set_app_state: ResMut<NextState<AppState>>,
-    mut scene_controller: Res<SceneController>,
+    scene_controller: Res<SceneController>,
 ) {
     if !server_state_clone.dirty {
         let participant_room_name = &(server_state_clone.state.lock().0).clone();
@@ -361,14 +366,14 @@ pub fn sync_bevy_and_server_resources(
             ));
             match status {
                 Ok(room_data) => {
-                    info!("connected to livekit room");
+                    info!("🎉connected to livekit room");
 
                     let RoomData {
                         livekit_room,
                         stream_frame_data,
                         audio_src,
-                        video_pub,
-                        audio_pub,
+                        video_pub: _,
+                        audio_pub: _,
                     } = room_data;
 
                     info!("initializing required bevy resources");
@@ -458,7 +463,10 @@ fn main() {
     app.init_resource::<frame_capture::scene::SceneController>();
     app.add_event::<frame_capture::scene::SceneController>();
 
+    // app.add_systems(Update, move_camera);
+
     app.add_systems(Update, server::shutdown_bevy_remotely);
+
     app.add_systems(
         Update,
         handle_room_events
@@ -490,4 +498,10 @@ fn main() {
     app.add_systems(OnEnter(AppState::Active), setup_gaussian_cloud);
 
     app.run();
+}
+
+fn move_camera(mut camera: Query<&mut Transform, With<Camera>>) {
+    for mut transform in camera.iter_mut() {
+        transform.translation.x += 5.0;
+    }
 }

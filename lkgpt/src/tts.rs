@@ -1,31 +1,26 @@
 use anyhow::bail;
 use async_trait::async_trait;
+use base64::{
+    engine::general_purpose::{self},
+    Engine,
+};
 use bevy::ecs::system::Resource;
-use bytes::{Buf, BufMut, Bytes, BytesMut};
-use deepgram::Deepgram;
+
 use ezsockets::{
-    client::ClientCloseMode, Client, ClientConfig, CloseFrame, MessageSignal, MessageStatus,
-    RawMessage, SocketConfig, WSError,
+    client::ClientCloseMode, Client, ClientConfig, CloseFrame, MessageStatus, RawMessage,
+    SocketConfig, WSError,
 };
 use futures::StreamExt;
-use livekit::webrtc::{
-    audio_frame::AudioFrame, audio_source::native::NativeAudioSource,
-    audio_stream::native::NativeAudioStream, native::audio_resampler,
-};
+use livekit::webrtc::{audio_frame::AudioFrame, audio_source::native::NativeAudioSource};
 use log::{error, info};
 use parking_lot::Mutex;
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
-use std::{
-    env,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tokio::sync::mpsc::UnboundedSender;
+use serde::Serialize;
+use serde_json::Value;
+use std::{sync::Arc, time::Duration};
 
 use std::io::Cursor;
 
-use crate::{stt::STT, ELEVENLABS_API_KEY};
+use crate::ELEVENLABS_API_KEY;
 
 #[derive(Serialize)]
 struct VoiceSettings {
@@ -57,17 +52,6 @@ struct RegularMessage {
     try_trigger_generation: bool,
 }
 
-struct NormalizedAlignment {
-    char_start_times_ms: Vec<u8>,
-    chars_durations_ms: Vec<u8>,
-    chars: Vec<char>,
-}
-struct ElevenLabs {
-    audio: String,
-    is_final: bool,
-    normalized_alignment: NormalizedAlignment,
-}
-
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Resource)]
 pub struct TTS {
@@ -82,7 +66,7 @@ struct WSClient {
 }
 
 fn decode_base64_audio(base64_audio: &str) -> anyhow::Result<Vec<i16>> {
-    let data = base64::decode(base64_audio)?;
+    let data = general_purpose::STANDARD.decode(base64_audio)?;
     let decoder = rodio::Decoder::new(Cursor::new(data))?;
 
     Ok(decoder.into_iter().collect::<Vec<i16>>())

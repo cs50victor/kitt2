@@ -4531,7 +4531,7 @@ dependencies = [
 [[package]]
 name = "libwebrtc"
 version = "0.3.0"
-source = "git+https://github.com/livekit/rust-sdks?rev=b9ba46e#b9ba46e1db0492df1c0eeb0065d366f48963878f"
+source = "git+https://github.com/cs50victor/livekit-rust-sdks.git?branch=update-proto#a568a8414a98a22f8f6fff0de2567d4a6a8e1945"
 dependencies = [
  "cxx",
  "jni 0.21.1",
@@ -4587,7 +4587,7 @@ checksum = "c4cd1a83af159aa67994778be9070f0ae1bd732942279cabb14f86f986a21456"
 [[package]]
 name = "livekit"
 version = "0.3.0"
-source = "git+https://github.com/livekit/rust-sdks?rev=b9ba46e#b9ba46e1db0492df1c0eeb0065d366f48963878f"
+source = "git+https://github.com/cs50victor/livekit-rust-sdks.git?branch=update-proto#a568a8414a98a22f8f6fff0de2567d4a6a8e1945"
 dependencies = [
  "futures-util",
  "lazy_static",
@@ -4606,7 +4606,7 @@ dependencies = [
 [[package]]
 name = "livekit-api"
 version = "0.3.0"
-source = "git+https://github.com/livekit/rust-sdks?rev=b9ba46e#b9ba46e1db0492df1c0eeb0065d366f48963878f"
+source = "git+https://github.com/cs50victor/livekit-rust-sdks.git?branch=update-proto#a568a8414a98a22f8f6fff0de2567d4a6a8e1945"
 dependencies = [
  "base64 0.21.7",
  "futures-util",
@@ -4629,7 +4629,7 @@ dependencies = [
 [[package]]
 name = "livekit-protocol"
 version = "0.3.0"
-source = "git+https://github.com/livekit/rust-sdks?rev=b9ba46e#b9ba46e1db0492df1c0eeb0065d366f48963878f"
+source = "git+https://github.com/cs50victor/livekit-rust-sdks.git?branch=update-proto#a568a8414a98a22f8f6fff0de2567d4a6a8e1945"
 dependencies = [
  "futures-util",
  "parking_lot",
@@ -7337,7 +7337,7 @@ dependencies = [
 [[package]]
 name = "webrtc-sys"
 version = "0.3.0"
-source = "git+https://github.com/livekit/rust-sdks?rev=b9ba46e#b9ba46e1db0492df1c0eeb0065d366f48963878f"
+source = "git+https://github.com/cs50victor/livekit-rust-sdks.git?branch=update-proto#a568a8414a98a22f8f6fff0de2567d4a6a8e1945"
 dependencies = [
  "cc",
  "cxx",
@@ -7350,7 +7350,7 @@ dependencies = [
 [[package]]
 name = "webrtc-sys-build"
 version = "0.3.0"
-source = "git+https://github.com/livekit/rust-sdks?rev=b9ba46e#b9ba46e1db0492df1c0eeb0065d366f48963878f"
+source = "git+https://github.com/cs50victor/livekit-rust-sdks.git?branch=update-proto#a568a8414a98a22f8f6fff0de2567d4a6a8e1945"
 dependencies = [
  "fs2",
  "regex",

@@ -1,5 +1,3 @@
-use core::slice::SlicePattern;
-
 use bevy::ecs::{
     system::{Res, ResMut, Resource},
     world::{FromWorld, World},
@@ -12,12 +10,7 @@ use deepgram::{
     },
     Deepgram,
 };
-use futures::{
-    stream::{FusedStream, SplitSink},
-    Sink, SinkExt, Stream, StreamExt,
-};
-use tokio_tungstenite::tungstenite::{self, http};
-use url::Url;
+use futures::{stream::SplitSink, SinkExt, StreamExt};
 
 use crate::{AsyncRuntime, DEEPGRAM_API_KEY};
 
@@ -132,6 +125,8 @@ pub fn receive_and_process_audio(
 
     while let Ok(message) = stt_websocket.rx.try_recv() {
         log::info!("transcribed text: {}", message);
-        llm_channel.tx.send(message);
+        if let Err(e) = llm_channel.tx.send(message) {
+            log::error!("Failed to send transcribed text: {}", e);
+        };
     }
 }

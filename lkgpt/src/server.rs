@@ -4,23 +4,20 @@ use livekit::{
     webrtc::{
         audio_source::native::NativeAudioSource,
         video_frame::{I420Buffer, VideoFrame, VideoRotation},
-        video_source::native::NativeVideoSource,
     },
-    RoomEvent,
 };
 use log::info;
 
 use actix_web::web;
 use parking_lot::Mutex;
-use tokio::sync::mpsc::UnboundedReceiver;
 
-use std::{borrow::Borrow, fmt::Debug, ops::DerefMut, sync::Arc};
+use std::{fmt::Debug, sync::Arc};
 
-use bevy::{ecs::world, prelude::*};
+use bevy::prelude::*;
 use livekit_api::access_token::{AccessToken, VideoGrants};
 use serde::{Deserialize, Serialize};
 
-use crate::{LivekitRoom, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_WS_URL, OPENAI_ORG_ID};
+use crate::{LivekitRoom, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_WS_URL};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ServerMsg<T> {
@@ -115,20 +112,13 @@ pub async fn setup_and_connect_to_livekit(
 
     // ************** SETUP OPENAI, TTS, & STT **************
     let crate::TracksPublicationData { video_pub, video_src, audio_src, audio_pub } =
-        crate::publish_tracks(room.clone(), bot_name).await?;
+        crate::publish_tracks(room.clone(), bot_name, video_frame_dimension).await?;
 
-    let pixel_size = 4;
+    let pixel_size = 4_u32;
 
     let (w, h) = (video_frame_dimension.0 as usize, video_frame_dimension.1 as usize);
 
     let frame_data = crate::FrameData {
-        image: ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(
-            w as u32,
-            h as u32,
-            vec![0u8; w * h * pixel_size],
-        )
-        .unwrap(),
-        framebuffer: Arc::new(Mutex::new(vec![0u8; w * h * pixel_size])),
         video_frame: Arc::new(Mutex::new(VideoFrame {
             rotation: VideoRotation::VideoRotation0,
             buffer: I420Buffer::new(w as u32, h as u32),
@@ -136,8 +126,7 @@ pub async fn setup_and_connect_to_livekit(
         })),
     };
 
-    let stream_frame_data =
-        crate::StreamingFrameData { pixel_size: pixel_size as u32, video_src, frame_data };
+    let stream_frame_data = crate::StreamingFrameData { pixel_size, video_src, frame_data };
 
     let livekit_room = LivekitRoom { room, room_events };
 
@@ -188,12 +177,14 @@ mod lsdk_webhook {
             .unwrap_or_default()
             .to_string();
 
+        let jwt = jwt.trim();
+
         let body = match std::str::from_utf8(&body) {
             Ok(i) => i,
             Err(e) => return Resp::BadRequest().json(ServerMsg::error(e.to_string())),
         };
 
-        let event = match webhook_receiver.receive(body, &jwt) {
+        let event = match webhook_receiver.receive(body, jwt) {
             Ok(i) => i,
             Err(e) => return Resp::InternalServerError().json(ServerMsg::error(e.to_string())),
         };

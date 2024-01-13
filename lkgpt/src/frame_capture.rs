@@ -181,10 +181,8 @@ pub mod image_copy {
     }
 }
 pub mod scene {
-    use std::path::PathBuf;
 
     use bevy::{
-        app::AppExit,
         prelude::*,
         render::{camera::RenderTarget, renderer::RenderDevice},
     };
@@ -325,12 +323,10 @@ pub mod scene {
                 for image in images_to_save.iter() {
                     let img_bytes = images.get_mut(image.id()).unwrap();
 
-                    let img = match img_bytes.clone().try_into_dynamic() {
+                    let rgba_img = match img_bytes.clone().try_into_dynamic() {
                         Ok(img) => img.to_rgba8(),
                         Err(e) => panic!("Failed to create image buffer {e:?}"),
                     };
-
-                    single_frame_data.frame_data.image = img;
 
                     if let Err(e) = async_runtime
                         .rt
@@ -338,18 +334,13 @@ pub mod scene {
                             let frame_data = single_frame_data.frame_data.clone();
                             let source = single_frame_data.video_src.clone();
                             move || {
-                                let img_vec = frame_data.image.as_raw();
-                                let mut framebuffer = frame_data.framebuffer.lock();
+                                // VIDEO FRAME BUFFER (i420_buffer)
                                 let mut video_frame = frame_data.video_frame.lock();
-                                let i420_buffer = &mut video_frame.buffer;
-
-                                let (stride_y, stride_u, stride_v) = i420_buffer.strides();
-                                let (data_y, data_u, data_v) = i420_buffer.data_mut();
-
-                                framebuffer.clone_from_slice(img_vec);
+                                let (stride_y, stride_u, stride_v) = video_frame.buffer.strides();
+                                let (data_y, data_u, data_v) = video_frame.buffer.data_mut();
 
                                 livekit::webrtc::native::yuv_helper::abgr_to_i420(
-                                    &framebuffer,
+                                    rgba_img.as_raw(),
                                     w * pixel_size,
                                     data_y,
                                     stride_y,

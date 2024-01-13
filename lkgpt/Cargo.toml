@@ -33,11 +33,11 @@ ezsockets = { version = "0.6.1", features = ["client"] }
 futures = "0.3.29"
 futures-intrusive = "0.5.0"
 image = { version = "0.24.7", default-features = false, features = ["png"] }
-livekit = { git = "https://github.com/livekit/rust-sdks", rev = "b9ba46e", features = [
+livekit = { git = "https://github.com/cs50victor/livekit-rust-sdks.git", branch = "update-proto", features = [
   "native-tls",
 ] }
-livekit-api = { git = "https://github.com/livekit/rust-sdks", rev = "b9ba46e" }
-livekit-protocol = { git = "https://github.com/livekit/rust-sdks", rev = "b9ba46e" }
+livekit-api = { git = "https://github.com/cs50victor/livekit-rust-sdks.git", branch = "update-proto" }
+livekit-protocol = { git = "https://github.com/cs50victor/livekit-rust-sdks.git", branch = "update-proto" }
 log = "0.4.20"
 parking_lot = "0.12.1"
 pollster = "0.3.0"
