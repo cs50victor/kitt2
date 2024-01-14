@@ -5,6 +5,11 @@ use bevy::ecs::{
 use futures::StreamExt;
 use livekit::webrtc::video_stream::native::NativeVideoStream;
 
+pub struct ReceivedVideoFrame {
+    pub image_buffer: Vec<u8>,
+    pub timestamp: i64, // When the frame was captured in microseconds
+}
+
 #[derive(Resource)]
 pub struct VideoChannel {
     pub tx: crossbeam_channel::Sender<Vec<i16>>,

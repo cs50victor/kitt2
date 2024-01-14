@@ -318,7 +318,6 @@ pub mod scene {
         if let SceneState::Render(n) = scene_controller.state {
             if n < 1 {
                 let single_frame_data = single_frame_data.into_inner();
-                let (w, h) = scene_controller.dimensions();
                 let pixel_size = single_frame_data.pixel_size;
                 for image in images_to_save.iter() {
                     let img_bytes = images.get_mut(image.id()).unwrap();
@@ -327,6 +326,8 @@ pub mod scene {
                         Ok(img) => img.to_rgba8(),
                         Err(e) => panic!("Failed to create image buffer {e:?}"),
                     };
+
+                    let (w, h) = rgba_img.dimensions();
 
                     if let Err(e) = async_runtime
                         .rt
@@ -339,6 +340,7 @@ pub mod scene {
                                 let (stride_y, stride_u, stride_v) = video_frame.buffer.strides();
                                 let (data_y, data_u, data_v) = video_frame.buffer.data_mut();
 
+                                // convert captured rgba image to i420
                                 livekit::webrtc::native::yuv_helper::abgr_to_i420(
                                     rgba_img.as_raw(),
                                     w * pixel_size,

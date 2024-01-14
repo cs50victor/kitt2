@@ -14,6 +14,7 @@ use std::sync::{
 
 use chrono::Utc;
 use frame_capture::scene::SceneController;
+use image::{ImageBuffer, Rgb, RgbaImage};
 use livekit::{publication::LocalTrackPublication, webrtc::video_frame::VideoBuffer, Room};
 // use actix_web::{middleware, web::Data, App, HttpServer};
 use log::info;
@@ -37,6 +38,7 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
 use bevy_gaussian_splatting::{GaussianCloud, GaussianSplattingBundle, GaussianSplattingPlugin};
 
+use pollster::FutureExt;
 use stt::{receive_and_process_audio, STT};
 
 use futures::StreamExt;
@@ -47,6 +49,7 @@ use livekit::{
 };
 use log::{error, warn};
 use serde::{Deserialize, Serialize};
+use video::ReceivedVideoFrame;
 
 use crate::{
     controls::WorldControlChannel, llm::LLMChannel, server::RoomData, stt::AudioInputChannel,
@@ -146,8 +149,10 @@ pub fn handle_room_events(
     _video_channel: Res<video::VideoChannel>,
     audio_syncer: ResMut<AudioSync>,
     mut room_events: ResMut<LivekitRoom>,
+    single_frame_data: ResMut<crate::StreamingFrameData>,
 ) {
     while let Ok(event) = room_events.room_events.try_recv() {
+        println!("\n\n🤡received room event {:?}", event);
         match event {
             RoomEvent::TrackSubscribed { track, publication: _, participant: _user } => {
                 match track {
@@ -160,62 +165,67 @@ pub fn handle_room_events(
                             let mut start_time = Utc::now().time();
                             let mut ms_audio_buffer: Vec<i16> = Vec::new();
                             while let Some(frame) = audio_stream.next().await {
+                                if audio_should_stop.load(Ordering::Relaxed) {
+                                    continue;
+                                }
                                 ms_audio_buffer.extend_from_slice(&frame.data);
                                 let elapsed = (Utc::now().time() - start_time).num_milliseconds();
-                                // 5ms of audio
-                                if elapsed >= 5 {
+                                // 10ms of audio
+                                if elapsed >= 10 {
                                     if let Err(e) = audio_channel_tx.send(frame.data.to_vec()) {
                                         log::error!("Couldn't send audio frame to stt {e}");
                                     };
                                     start_time = Utc::now().time();
-                                }
-                                if audio_should_stop.load(Ordering::Relaxed) {
-                                    break;
                                 }
                             }
                         });
                     },
                     RemoteTrack::Video(video_track) => {
                         let video_rtc_track = video_track.rtc_track();
+                        let pixel_size = 4;
                         let mut video_stream = NativeVideoStream::new(video_rtc_track);
+
                         async_runtime.rt.spawn(async move {
+                            // every 10 video frames
+                            let mut i = 0;
                             while let Some(frame) = video_stream.next().await {
-                                // frame.buffer.to_argb(format, dst, dst_stride, dst_width, dst_height)
-                                let _video_frame_buffer = frame.buffer.to_i420();
-                                // let width: u32 = video_frame_buffer.width();
-                                // let height: u32 = video_frame_buffer.height();
-                                // let rgba_stride = video_frame_buffer.width() * 4;
+                                log::error!("🤡received video frame | {:#?}", frame);
+                                // VIDEO FRAME BUFFER (i420_buffer)
+                                let video_frame_buffer = frame.buffer.to_i420();
+                                let width = video_frame_buffer.width();
+                                let height = video_frame_buffer.height();
+                                let rgba_stride = video_frame_buffer.width() * pixel_size;
 
-                                // let (stride_y, stride_u, stride_v) = video_frame_buffer.strides();
-                                // let (data_y, data_u, data_v) = video_frame_buffer.data();
+                                let (stride_y, stride_u, stride_v) = video_frame_buffer.strides();
+                                let (data_y, data_u, data_v) = video_frame_buffer.data();
 
-                                // livekit::webrtc::native::yuv_helper::i420_to_rgba(
-                                //     data_y,
-                                //     stride_y,
-                                //     data_u,
-                                //     stride_u,
-                                //     data_v,
-                                //     stride_v,
-                                //     rgba_ptr,
-                                //     rgba_stride,
-                                //     video_frame_buffer.width() as i32,
-                                //     video_frame_buffer.height() as i32,
-                                // );
+                                let rgba_buffer = RgbaImage::new(width, height);
+                                let rgba_raw = unsafe {
+                                    std::slice::from_raw_parts_mut(
+                                        rgba_buffer.as_raw().as_ptr() as *mut u8,
+                                        rgba_buffer.len(),
+                                    )
+                                };
 
-                                // if let Err(e)= audio_channel_tx.send(frame.data.to_vec()){
-                                //     log::error!("Couldn't send audio frame to stt {e}");
-                                // };
+                                livekit::webrtc::native::yuv_helper::i420_to_rgba(
+                                    data_y,
+                                    stride_y,
+                                    data_u,
+                                    stride_u,
+                                    data_v,
+                                    stride_v,
+                                    rgba_raw,
+                                    rgba_stride,
+                                    video_frame_buffer.width() as i32,
+                                    video_frame_buffer.height() as i32,
+                                );
 
-                                /*
-                                    image: image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
-                                    framebuffer: std::sync::Arc<parking_lot::Mutex<Vec<u8>>>,
-                                    video_frame: std::sync::Arc<
-                                        parking_lot::Mutex<
-                                            livekit::webrtc::video_frame::VideoFrame<livekit::webrtc::video_frame::I420Buffer>,
-                                        >,
-                                    >,
-                                */
+                                if let Err(e) = rgba_buffer.save(format!("camera/{i}.png")) {
+                                    log::error!("Couldn't save video frame {e}");
+                                };
+                                i += 1;
                             }
+                            info!("🤡ended video thread");
                         });
                     },
                 };

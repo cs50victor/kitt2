@@ -37,13 +37,18 @@ export default function LivekitRoom({ params }: { params: { name: string } }) {
         <ActiveRoom roomName={roomName} userChoices={preJoinChoices} />
       ) : (
         <div className="flex flex-col justify-center items-center h-full">
-          <h1 className="text-4xl font-semibold font-display text-brand mb-4">Kitt2</h1>
+          <h1 className="text-4xl font-semibold font-display text-brand">Kitt2</h1>
           <PreJoinNoSSR
-            className="p-4 rounded-xl
+            className="p-4 rounded-xl w-full max-w-sm
             [&*.lk-camera-off-note]:bg-cyan-950
+            [&*.lk-camera-off-note]:flex
+            [&*.lk-camera-off-note]:items-center
+            [&*.lk-camera-off-note]:justify-center
             [&*.lk-camera-off-note>svg]:stroke-black
             [&*.lk-camera-off-note>svg>path]:fill-gray-300
             [&*.lk-camera-off-note]:rounded-full
+            [&*.lk-camera-off-note]:aspect-w-4
+            [&*.lk-camera-off-note]:aspect-h-4
             [&*.lk-camera-off-note]:overflow-hidden
             [&*.lk-camera-off-note]:border
 

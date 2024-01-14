@@ -189,27 +189,42 @@ mod lsdk_webhook {
             Err(e) => return Resp::InternalServerError().json(ServerMsg::error(e.to_string())),
         };
 
-        if event.room.is_some() && event.event == "room_started" {
+        // room_finished
+        if event.room.is_some() {
             let livekit_protocol::Room {
                 name: participant_room_name,
                 max_participants,
                 num_participants,
                 ..
             } = event.room.unwrap();
+            let event = event.event;
+            if event == "room_started" {
+                if num_participants < max_participants {
+                    info!("...connecting to room");
 
-            if num_participants < max_participants {
-                info!("...connecting to room");
+                    let server_data = server_data.lock();
 
+                    log::info!("app state {:#?}", *server_data.app_state);
+
+                    *server_data.app_state.lock() =
+                        crate::ParticipantRoomName(participant_room_name);
+
+                    log::info!("app state {:?}", *server_data.app_state);
+
+                    info!("\nSERVER FINISHED PROCESSING ROOM_STARTED WEBHOOK");
+                };
+            } else if event == "room_finished" {
                 let server_data = server_data.lock();
 
                 log::info!("app state {:#?}", *server_data.app_state);
 
-                *server_data.app_state.lock() = crate::ParticipantRoomName(participant_room_name);
+                *server_data.app_state.lock() =
+                    crate::ParticipantRoomName(format!("reset:{participant_room_name}"));
 
                 log::info!("app state {:?}", *server_data.app_state);
 
-                info!("\nSERVER FINISHED PROCESSING ROOM_STARTED WEBHOOK");
-            };
+                info!("\nSERVER FINISHED PROCESSING ROOM_FINISHED WEBHOOK");
+            }
         } else {
             info!("received event {}", event.event);
         }
