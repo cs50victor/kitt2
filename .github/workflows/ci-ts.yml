@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "**/meet/**"
+      - "**/ci-ts.yml"
       - "**/.eslintrc.json"
       - "**/.node-version"
       - "**/package.json"
@@ -16,7 +17,7 @@ env:
 # Cancel old builds on new commit for same workflow + branch/PR
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   ci-ts:
@@ -26,35 +27,15 @@ jobs:
       - name: Checkout Sources
         uses: actions/checkout@v3
 
-      - name: Install Node.js
-        uses: actions/setup-node@v3
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
         with:
-          node-version: 18
+          bun-version: latest
 
-      - name: Install PNPM
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-          run_install: false
+      #  Will figure out a better way to do these later
+      - name: Install Global Dependencies
+        run: bun install --ignore-scripts
 
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
-      - name: Install Dependencies
-        run: pnpm install
-
-      - name: Build
-        run: pnpm build
-
-      - name: Lint
-        run: pnpm lint
+      #  Errors out on build when separated into multiple steps
+      - name: Install, Build, and Lint Meet
+        run: cd meet && bun install --ignore-scripts && bun run build && bun run lint

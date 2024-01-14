@@ -2,10 +2,13 @@
 resolver = "2"
 members = ["lkgpt"]
 
-package.rust-version = "1.74.0"
+package.rust-version = "1.75.0"
 
 [profile.dev]
-opt-level = 3 # All optimizations
+opt-level = 1 # Small amount of optimizations
+
+[profile.dev.package."*"]
+opt-level = 3
 
 [profile.release]
 opt-level = "z"   # Optimize for binanry size.

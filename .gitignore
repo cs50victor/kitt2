@@ -3,8 +3,10 @@
 # Rust
 target/
 
-# ggml binaries and binaries in general
+# ggml binaries & other binaries in general
 *.bin
+# local splat files
+**/splats/*
 
 # dependencies
 node_modules
@@ -17,6 +19,8 @@ node_modules
 # next.js
 .next/
 /out/
+# next.js experimatal https
+certificates
 
 # production
 /build

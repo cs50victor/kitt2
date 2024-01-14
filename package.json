@@ -2,15 +2,44 @@
   "name": "kitt_2",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
   "scripts": {
+    "prepare": "husky install",
+    "build": "pnpm --dir=meet build",
     "dev": "concurrently --names 'WEB,SERVER' -c 'auto' \"pnpm --dir=meet dev\" \"cargo rr --bin lkgpt\"",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "format": "concurrently --names 'fmt:web,fmt:rs,fmt:toml' -c 'auto' \"pnpm format:prettier\" \"pnpm format:rs\" \"pnpm format:toml\"",
+    "format:prettier": "prettier --write \"**/*.{js,ts,tsx}\"",
+    "format:rs": "cargo fmt --all",
+    "format:toml": "taplo format",
+    "pre-commit": "lint-staged"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "@taplo/cli": "^0.5.2",
+    "concurrently": "^8.2.2",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.2.0",
+    "prettier": "^3.1.1"
+  },
+  "lint-staged": {
+    "*.rs": [
+      "cargo fmt --"
+    ],
+    "*.toml": [
+      "taplo format"
+    ],
+    "*.{js,ts,tsx}": [
+      "eslint --ext jsx,ts,tsx --quiet --fix --",
+      "prettier --write"
+    ],
+    "*.{md,mdx,yml}": [
+      "prettier --write"
+    ]
+  },
+  "packageManager": "pnpm@8.7.6",
+  "engines": {
+    "node": "20.x",
+    "pnpm": "8"
   }
 }

@@ -1,0 +1,6 @@
+[[rule]]
+keys = ["dependencies", "*-dependencies"]
+
+[rule.formatting]
+reorder_keys = true
+indent_tables = true
