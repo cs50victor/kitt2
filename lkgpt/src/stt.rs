@@ -1,16 +1,19 @@
+use std::time::Duration;
+
 use bevy::ecs::{
     system::{Res, ResMut, Resource},
     world::{FromWorld, World},
 };
 use deepgram::{
     transcription::live::{
-        options::{Encoding, Model, Options},
+        options::{Model, Options},
         response::Response,
         DeepgramLive,
     },
     Deepgram,
 };
 use futures::{stream::SplitSink, SinkExt, StreamExt};
+use rodio::cpal::Sample;
 
 use crate::{AsyncRuntime, DEEPGRAM_API_KEY};
 
@@ -31,23 +34,14 @@ impl FromWorld for AudioInputChannel {
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Resource)]
 pub struct STT {
+    last_msg_time: std::time::Instant,
     tx: SplitSink<DeepgramLive, Vec<u8>>,
     rx: crossbeam_channel::Receiver<String>,
 }
 
 impl STT {
-    pub const LATENCY_FRAMES: f32 = (Self::LATENCY_MS / 1_000.0) * Self::SAMPLE_RATE_F32;
-    // Uses a delay of `LATENCY_MS` milliseconds in case the default input and output streams are not precisely synchronised
-    pub const LATENCY_MS: f32 = 5000.0;
-    pub const LATENCY_SAMPLES: u32 = Self::LATENCY_FRAMES as u32 * Self::NUM_OF_CHANNELS;
-    const MIN_AUDIO_MS_CHUNK: u64 = 25;
-    pub const NUM_ITERS: usize = 2;
-    pub const NUM_ITERS_SAVED: usize = 2;
     pub const NUM_OF_CHANNELS: u32 = 1;
     pub const SAMPLE_RATE: u32 = 44100;
-    //1600
-    pub const SAMPLE_RATE_F32: f32 = Self::SAMPLE_RATE as f32;
-    pub const SAMPLING_FREQ: f32 = Self::SAMPLE_RATE_F32 / 2.0;
 }
 
 impl FromWorld for STT {
@@ -59,29 +53,37 @@ impl FromWorld for STT {
             Err(e) => panic!("Failed to connect to Deepgram: {}", e),
         };
 
+        let last_msg_time = std::time::Instant::now();
+
         let (ws_tx, mut socket_stream) = ws.split();
 
-        // let k = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>
         let (tx, rx) = crossbeam_channel::unbounded();
 
         async_rt.rt.spawn(async move {
-            while let Some(Ok(resp)) = socket_stream.next().await {
-                match resp {
-                    Response::Results(result) => {
-                        let txt = result.channel.alternatives[0].transcript.clone();
-                        if let Err(e) = tx.send(txt) {
-                            log::error!("Failed to send transcribed text: {}", e);
-                        };
+            while let Some(res) = socket_stream.next().await {
+                match res {
+                    Ok(resp) => match resp {
+                        Response::Results(result) => {
+                            log::info!("😈 DEEPGRAM RESULT : {:?}", result);
+                            let txt = result.channel.alternatives[0].transcript.clone();
+                            if let Err(e) = tx.send(txt) {
+                                log::error!("Failed to send transcribed text: {}", e);
+                            };
+                        },
+                        Response::Metadata(metadata) => {
+                            log::info!("STT metadata from deepgram : {:?}", metadata);
+                        },
                     },
-                    Response::Metadata(metadata) => {
-                        log::info!("STT metadata from deepgram : {:?}", metadata);
+                    Err(e) => {
+                        log::error!("Deepgram websocket stream error: {:#?}", e);
                     },
                 }
             }
+            log::error!("Deepgram websocket stream ended");
         });
 
         log::info!("Connected to Deepgram");
-        Self { tx: ws_tx, rx }
+        Self { tx: ws_tx, rx, last_msg_time }
     }
 }
 
@@ -90,12 +92,7 @@ async fn connect_to_deepgram() -> anyhow::Result<DeepgramLive> {
 
     let dg_client = Deepgram::new(&deepgram_api_key)?;
     let options = Options::builder()
-        .model(Model::CustomId("nova-2-conversationalai".to_string()))
-        .encoding_with_channels(
-            Encoding::Linear16,
-            STT::SAMPLE_RATE as usize,
-            STT::NUM_OF_CHANNELS as usize,
-        )
+        .model(Model::CustomId("nova-2".to_string()))
         .punctuate(true)
         .version("latest")
         .build();
@@ -108,23 +105,49 @@ async fn connect_to_deepgram() -> anyhow::Result<DeepgramLive> {
     Ok(deepgram_socket)
 }
 
-// SYSTEM
-pub fn receive_and_process_audio(
+// SYSTEMS
+pub fn receive_audio_input(
     audio_channel: Res<AudioInputChannel>,
-    llm_channel: Res<crate::llm::LLMChannel>,
     mut stt_websocket: ResMut<STT>,
     async_runtime: Res<AsyncRuntime>,
 ) {
     while let Ok(audio_buffer) = audio_channel.rx.try_recv() {
-        log::info!("receiving audio");
+        log::info!("Received audio buffer from mic");
         let sample_bytes =
-            audio_buffer.into_iter().flat_map(|sample| sample.to_le_bytes()).collect::<Vec<u8>>();
+            audio_buffer.into_iter().map(|sample| sample.to_sample::<u8>()).collect::<Vec<u8>>();
 
-        let _ = async_runtime.rt.block_on(async { stt_websocket.tx.send(sample_bytes).await });
+        match async_runtime.rt.block_on(async { stt_websocket.tx.send(sample_bytes).await }) {
+            Ok(_) => {
+                log::info!("Sent audio buffer to Deepgram");
+                stt_websocket.last_msg_time = std::time::Instant::now();
+            },
+            Err(e) => {
+                log::error!("Failed to send audio buffer to Deepgram: {e:?}");
+            },
+        };
     }
 
+    // Send PING to Deepgram if no audio input for 10 seconds | Prevents Deepgram from closing the websocket connection
+    if stt_websocket.last_msg_time.elapsed() > Duration::from_secs(10) {
+        log::warn!("No audio input for 10 seconds, sending PING to Deepgram");
+        match async_runtime.rt.block_on(async { stt_websocket.tx.send(vec![0_u8; 250]).await }) {
+            Ok(_) => {
+                log::info!("Sent PING audio buffer to Deepgram");
+                stt_websocket.last_msg_time = std::time::Instant::now();
+            },
+            Err(e) => {
+                log::error!("Failed to send PING audio buffer to Deepgram: {e:?}");
+            },
+        };
+    }
+}
+
+pub fn send_transcribed_audio_to_llm(
+    llm_channel: Res<crate::llm::LLMChannel>,
+    stt_websocket: ResMut<STT>,
+) {
     while let Ok(message) = stt_websocket.rx.try_recv() {
-        log::info!("transcribed text: {}", message);
+        log::info!("\n\n\n\n\n\n\n\n\n\ntranscribed text: {}", message);
         if let Err(e) = llm_channel.tx.send(message) {
             log::error!("Failed to send transcribed text: {}", e);
         };

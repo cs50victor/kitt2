@@ -1,4 +1,3 @@
-use image::{ImageBuffer, Rgba};
 use livekit::{
     publication::LocalTrackPublication,
     webrtc::{
@@ -90,6 +89,7 @@ pub struct RoomData {
     pub stream_frame_data: crate::StreamingFrameData,
     pub audio_src: NativeAudioSource,
     pub audio_pub: LocalTrackPublication,
+    pub bot_name: String,
 }
 
 pub async fn setup_and_connect_to_livekit(
@@ -130,7 +130,14 @@ pub async fn setup_and_connect_to_livekit(
 
     let livekit_room = LivekitRoom { room, room_events };
 
-    Ok(RoomData { livekit_room, stream_frame_data, video_pub, audio_src, audio_pub })
+    Ok(RoomData {
+        livekit_room,
+        stream_frame_data,
+        video_pub,
+        audio_src,
+        audio_pub,
+        bot_name: bot_name.to_string(),
+    })
 }
 
 mod health_check {

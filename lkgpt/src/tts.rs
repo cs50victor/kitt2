@@ -141,7 +141,7 @@ impl ezsockets::ClientExt for WSClient {
     }
 
     async fn on_disconnect(&mut self) -> Result<ClientCloseMode, ezsockets::Error> {
-        info!("ELEVEN LABS disconnect");
+        info!("ELEVEN LABS disconnected");
         Ok(ClientCloseMode::Reconnect)
     }
 }
@@ -239,15 +239,6 @@ impl TTS {
         info!("sending to eleven labs {msg}");
 
         Ok(self.ws_client.as_ref().unwrap().text(msg)?.status())
-    }
-}
-
-impl Drop for TTS {
-    fn drop(&mut self) {
-        info!("DROPPING TTS");
-        if let Err(e) = self.send("".to_owned()) {
-            error!("Error shutting down TTS  / Eleven Labs connection | Reason - {e}");
-        };
     }
 }
 

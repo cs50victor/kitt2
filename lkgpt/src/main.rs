@@ -12,9 +12,8 @@ use std::sync::{
     Arc,
 };
 
-use chrono::Utc;
 use frame_capture::scene::SceneController;
-use image::{ImageBuffer, Rgb, RgbaImage};
+use image::RgbaImage;
 use livekit::{publication::LocalTrackPublication, webrtc::video_frame::VideoBuffer, Room};
 // use actix_web::{middleware, web::Data, App, HttpServer};
 use log::info;
@@ -39,7 +38,7 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_gaussian_splatting::{GaussianCloud, GaussianSplattingBundle, GaussianSplattingPlugin};
 
 use pollster::FutureExt;
-use stt::{receive_and_process_audio, STT};
+use stt::{receive_audio_input, send_transcribed_audio_to_llm, STT};
 
 use futures::StreamExt;
 use livekit::{
@@ -49,7 +48,6 @@ use livekit::{
 };
 use log::{error, warn};
 use serde::{Deserialize, Serialize};
-use video::ReceivedVideoFrame;
 
 use crate::{
     controls::WorldControlChannel, llm::LLMChannel, server::RoomData, stt::AudioInputChannel,
@@ -149,7 +147,7 @@ pub fn handle_room_events(
     _video_channel: Res<video::VideoChannel>,
     audio_syncer: ResMut<AudioSync>,
     mut room_events: ResMut<LivekitRoom>,
-    single_frame_data: ResMut<crate::StreamingFrameData>,
+    _single_frame_data: ResMut<crate::StreamingFrameData>,
 ) {
     while let Ok(event) = room_events.room_events.try_recv() {
         println!("\n\n🤡received room event {:?}", event);
@@ -162,21 +160,13 @@ pub fn handle_room_events(
                         let audio_channel_tx = audio_channel.tx.clone();
                         let audio_should_stop = audio_syncer.should_stop.clone();
                         async_runtime.rt.spawn(async move {
-                            let mut start_time = Utc::now().time();
-                            let mut ms_audio_buffer: Vec<i16> = Vec::new();
                             while let Some(frame) = audio_stream.next().await {
                                 if audio_should_stop.load(Ordering::Relaxed) {
                                     continue;
                                 }
-                                ms_audio_buffer.extend_from_slice(&frame.data);
-                                let elapsed = (Utc::now().time() - start_time).num_milliseconds();
-                                // 10ms of audio
-                                if elapsed >= 10 {
-                                    if let Err(e) = audio_channel_tx.send(frame.data.to_vec()) {
-                                        log::error!("Couldn't send audio frame to stt {e}");
-                                    };
-                                    start_time = Utc::now().time();
-                                }
+                                if let Err(e) = audio_channel_tx.send(frame.data.to_vec()) {
+                                    error!("Couldn't send audio frame to stt {e}");
+                                };
                             }
                         });
                     },
@@ -259,6 +249,13 @@ pub fn handle_room_events(
             RoomEvent::TrackUnmuted { participant: _, publication: _ } => {
                 audio_syncer.should_stop.store(false, Ordering::Relaxed);
             },
+            // RoomEvent::ActiveSpeakersChanged { speakers } => {
+            //     if speakers.is_empty() {
+            //         audio_syncer.should_stop.store(true, Ordering::Relaxed);
+            //     }
+            //     let is_main_participant_muted = speakers.iter().any(|speaker| speaker.name() != "kitt");
+            //     audio_syncer.should_stop.store(is_main_participant_muted, Ordering::Relaxed);
+            // }
             _ => info!("received room event {:?}", event),
         }
     }
@@ -382,6 +379,7 @@ pub fn sync_bevy_and_server_resources(
                         livekit_room,
                         stream_frame_data,
                         audio_src,
+                        bot_name: _,
                         video_pub: _,
                         audio_pub: _,
                     } = room_data;
@@ -485,13 +483,21 @@ fn main() {
             .run_if(resource_exists::<video::VideoChannel>())
             .run_if(resource_exists::<LivekitRoom>()),
     );
+
     app.add_systems(
         Update,
-        receive_and_process_audio
+        receive_audio_input
             .run_if(resource_exists::<stt::AudioInputChannel>())
+            .run_if(resource_exists::<STT>()),
+    );
+
+    app.add_systems(
+        Update,
+        send_transcribed_audio_to_llm
             .run_if(resource_exists::<llm::LLMChannel>())
             .run_if(resource_exists::<STT>()),
     );
+
     app.add_systems(
         Update,
         llm::run_llm
@@ -505,7 +511,7 @@ fn main() {
         sync_bevy_and_server_resources.run_if(on_timer(std::time::Duration::from_secs(2))),
     );
 
-    app.add_systems(OnEnter(AppState::Active), setup_gaussian_cloud);
+    // app.add_systems(OnEnter(AppState::Active), setup_gaussian_cloud);
 
     app.run();
 }
