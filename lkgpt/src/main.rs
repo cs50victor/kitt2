@@ -51,7 +51,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     controls::WorldControlChannel, llm::LLMChannel, server::RoomData, stt::AudioInputChannel,
-    tts::create_tts, video::VideoChannel,
+    tts::TTS, video::VideoChannel,
 };
 
 pub const LIVEKIT_API_SECRET: &str = "LIVEKIT_API_SECRET";
@@ -275,8 +275,8 @@ pub async fn publish_tracks(
 ) -> Result<TracksPublicationData, RoomError> {
     let audio_src = NativeAudioSource::new(
         AudioSourceOptions::default(),
-        STT::SAMPLE_RATE,
-        STT::NUM_OF_CHANNELS,
+        TTS::SAMPLE_RATE,
+        TTS::NUM_OF_CHANNELS,
     );
 
     let audio_track =
@@ -385,7 +385,8 @@ pub fn sync_bevy_and_server_resources(
                     } = room_data;
 
                     info!("initializing required bevy resources");
-                    let tts = async_runtime.rt.block_on(create_tts(audio_src)).unwrap();
+
+                    let tts = async_runtime.rt.block_on(TTS::new(audio_src)).unwrap();
 
                     commands.init_resource::<LLMChannel>();
                     commands.init_resource::<WorldControlChannel>();
@@ -484,12 +485,12 @@ fn main() {
             .run_if(resource_exists::<LivekitRoom>()),
     );
 
-    app.add_systems(
-        Update,
-        receive_audio_input
-            .run_if(resource_exists::<stt::AudioInputChannel>())
-            .run_if(resource_exists::<STT>()),
-    );
+    // app.add_systems(
+    //     Update,
+    //     receive_audio_input
+    //         .run_if(resource_exists::<stt::AudioInputChannel>())
+    //         .run_if(resource_exists::<STT>()),
+    // );
 
     app.add_systems(
         Update,

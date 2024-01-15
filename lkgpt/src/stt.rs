@@ -39,11 +39,6 @@ pub struct STT {
     rx: crossbeam_channel::Receiver<String>,
 }
 
-impl STT {
-    pub const NUM_OF_CHANNELS: u32 = 1;
-    pub const SAMPLE_RATE: u32 = 44100;
-}
-
 impl FromWorld for STT {
     fn from_world(world: &mut World) -> Self {
         let async_rt = world.get_resource::<AsyncRuntime>().unwrap();
