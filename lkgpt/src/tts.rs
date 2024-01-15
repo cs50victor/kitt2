@@ -136,7 +136,7 @@ impl ezsockets::ClientExt for WSClient {
         &mut self,
         _error: WSError,
     ) -> Result<ClientCloseMode, ezsockets::Error> {
-        info!("ELEVEN LABS connection FAIL");
+        error!("ELEVEN LABS connection FAIL");
         Ok(ClientCloseMode::Reconnect)
     }
 
@@ -144,13 +144,13 @@ impl ezsockets::ClientExt for WSClient {
         &mut self,
         _frame: Option<CloseFrame>,
     ) -> Result<ClientCloseMode, ezsockets::Error> {
-        info!("ELEVEN LABS connection CLOSE");
+        error!("ELEVEN LABS connection CLOSE");
         self.tts_ws_started.store(false, Ordering::Relaxed);
         Ok(ClientCloseMode::Reconnect)
     }
 
     async fn on_disconnect(&mut self) -> Result<ClientCloseMode, ezsockets::Error> {
-        info!("ELEVEN LABS disconnected");
+        error!("ELEVEN LABS disconnected");
         Ok(ClientCloseMode::Reconnect)
     }
 }
