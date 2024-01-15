@@ -38,7 +38,6 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_gaussian_splatting::{GaussianCloud, GaussianSplattingBundle, GaussianSplattingPlugin};
 
 use pollster::FutureExt;
-use stt::{receive_audio_input, send_transcribed_audio_to_llm, STT};
 
 use futures::StreamExt;
 use livekit::{
@@ -47,11 +46,12 @@ use livekit::{
     DataPacketKind, RoomEvent,
 };
 use log::{error, warn};
+use rodio::cpal::Sample as _;
 use serde::{Deserialize, Serialize};
+use stt::STT;
 
 use crate::{
-    controls::WorldControlChannel, llm::LLMChannel, server::RoomData, stt::AudioInputChannel,
-    tts::TTS, video::VideoChannel,
+    controls::WorldControlChannel, llm::LLMChannel, server::RoomData, tts::TTS, video::VideoChannel,
 };
 
 pub const LIVEKIT_API_SECRET: &str = "LIVEKIT_API_SECRET";
@@ -135,6 +135,7 @@ pub struct AppStateSync {
 
 #[derive(Resource)]
 pub struct LivekitRoom {
+    #[allow(dead_code)]
     room: std::sync::Arc<Room>,
     room_events: tokio::sync::mpsc::UnboundedReceiver<RoomEvent>,
 }
@@ -143,7 +144,7 @@ pub struct LivekitRoom {
 pub fn handle_room_events(
     async_runtime: Res<AsyncRuntime>,
     llm_channel: Res<llm::LLMChannel>,
-    audio_channel: Res<stt::AudioInputChannel>,
+    stt_client: ResMut<STT>,
     _video_channel: Res<video::VideoChannel>,
     audio_syncer: ResMut<AudioSync>,
     mut room_events: ResMut<LivekitRoom>,
@@ -157,14 +158,26 @@ pub fn handle_room_events(
                     RemoteTrack::Audio(audio_track) => {
                         let audio_rtc_track = audio_track.rtc_track();
                         let mut audio_stream = NativeAudioStream::new(audio_rtc_track);
-                        let audio_channel_tx = audio_channel.tx.clone();
                         let audio_should_stop = audio_syncer.should_stop.clone();
+                        let stt_client = stt_client.clone();
                         async_runtime.rt.spawn(async move {
                             while let Some(frame) = audio_stream.next().await {
                                 if audio_should_stop.load(Ordering::Relaxed) {
                                     continue;
                                 }
-                                if let Err(e) = audio_channel_tx.send(frame.data.to_vec()) {
+
+                                let audio_buffer = frame
+                                    .data
+                                    .iter()
+                                    .map(|sample| sample.to_sample::<u8>())
+                                    .collect::<Vec<u8>>();
+
+                                if audio_buffer.is_empty() {
+                                    warn!("empty audio frame | {:#?}", audio_buffer);
+                                    continue;
+                                }
+
+                                if let Err(e) = stt_client.send(audio_buffer) {
                                     error!("Couldn't send audio frame to stt {e}");
                                 };
                             }
@@ -387,11 +400,15 @@ pub fn sync_bevy_and_server_resources(
                     info!("initializing required bevy resources");
 
                     let tts = async_runtime.rt.block_on(TTS::new(audio_src)).unwrap();
+                    let llm_channel = LLMChannel::new();
+                    let llm_tx = llm_channel.tx.clone();
 
-                    commands.init_resource::<LLMChannel>();
+                    commands.insert_resource(llm_channel);
                     commands.init_resource::<WorldControlChannel>();
-                    commands.init_resource::<AudioInputChannel>();
-                    commands.init_resource::<STT>();
+
+                    let stt = async_runtime.rt.block_on(STT::new(llm_tx)).unwrap();
+                    commands.insert_resource(stt);
+
                     commands.init_resource::<VideoChannel>();
                     commands.insert_resource(tts);
                     commands.insert_resource(stream_frame_data);
@@ -442,7 +459,6 @@ fn main() {
 
     let config = AppConfig { width: 1920, height: 1080 };
 
-    // setup frame capture
     app.insert_resource(frame_capture::scene::SceneController::new(config.width, config.height));
     app.insert_resource(ClearColor(Color::rgb_u8(0, 0, 0)));
 
@@ -480,23 +496,9 @@ fn main() {
         Update,
         handle_room_events
             .run_if(resource_exists::<llm::LLMChannel>())
-            .run_if(resource_exists::<stt::AudioInputChannel>())
+            .run_if(resource_exists::<stt::STT>())
             .run_if(resource_exists::<video::VideoChannel>())
             .run_if(resource_exists::<LivekitRoom>()),
-    );
-
-    // app.add_systems(
-    //     Update,
-    //     receive_audio_input
-    //         .run_if(resource_exists::<stt::AudioInputChannel>())
-    //         .run_if(resource_exists::<STT>()),
-    // );
-
-    app.add_systems(
-        Update,
-        send_transcribed_audio_to_llm
-            .run_if(resource_exists::<llm::LLMChannel>())
-            .run_if(resource_exists::<STT>()),
     );
 
     app.add_systems(

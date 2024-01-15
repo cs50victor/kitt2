@@ -26,8 +26,8 @@ pub struct LLMChannel {
     pub text_chat_prefix: &'static str,
 }
 
-impl FromWorld for LLMChannel {
-    fn from_world(_world: &mut World) -> Self {
+impl Default for LLMChannel {
+    fn default() -> Self {
         let open_ai_org_id = std::env::var(OPENAI_ORG_ID).unwrap();
 
         let (tx, rx) = crossbeam_channel::unbounded::<String>();
@@ -55,6 +55,12 @@ impl FromWorld for LLMChannel {
             req_args,
             text_chat_prefix,
         }
+    }
+}
+
+impl LLMChannel {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 

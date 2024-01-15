@@ -1,4 +1,3 @@
-use anyhow::bail;
 use async_trait::async_trait;
 use base64::{
     engine::general_purpose::{self},
