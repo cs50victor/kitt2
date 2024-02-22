@@ -39,7 +39,7 @@ export default function LivekitRoom({ params }: { params: { name: string } }) {
         </div>
       ) : (
         <div className="flex flex-col justify-center items-center h-full min-h-dvh">
-          <h1 className="text-4xl font-semibold font-display text-brand">Kitt2</h1>
+          {/* <h1 className="text-4xl font-semibold font-display text-brand">Kitt2</h1> */}
           <PreJoinNoSSR
             className="p-4 rounded-xl w-full max-w-sm
             [&*.lk-camera-off-note]:bg-cyan-950

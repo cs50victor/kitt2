@@ -35,36 +35,36 @@ impl ezsockets::ClientExt for WSClient {
 
     async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> {
         let data: Value = serde_json::from_str(&text)?;
-        let transcript_details = data["channel"]["alternatives"][0].clone();
+        let transcript = data["channel"]["alternatives"][0]["transcript"].clone();
 
-        info!("\n\n\nreceived message from deepgram: {}", data);
-        info!("\n\n\nreceived message from deepgram: {}", transcript_details);
-
-        // if transcript_details!= Value::Null {
-        //     self.to_gpt.send(transcript_details.to_string())?;
-        // }
+        if transcript != Value::Null {
+            info!("🎉 from deepgram {transcript}");
+            if let Err(e) = self.llm_channel_tx.send(transcript.to_string()) {
+                error!("Error sending to LLM: {}", e);
+            };
+        }
 
         Ok(())
     }
 
     async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
-        info!("received bytes: {bytes:?}");
+        info!("received bytes from deepgram: {bytes:?}");
         Ok(())
     }
 
     async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
-        info!("DEEPGRAM ON CALL: {call:?}");
+        info!("Deepgram ON CALL: {call:?}");
         let () = call;
         Ok(())
     }
 
     async fn on_connect(&mut self) -> Result<(), ezsockets::Error> {
-        info!("DEEPGRAM CONNECTED 🎉");
+        info!("Deepgram CONNECTED 🎉");
         Ok(())
     }
 
     async fn on_connect_fail(&mut self, e: WSError) -> Result<ClientCloseMode, ezsockets::Error> {
-        error!("DEEPGRAM connection FAIL 💔 {e}");
+        error!("Deepgram CONNECTION FAILED | {e}");
         Ok(ClientCloseMode::Reconnect)
     }
 
@@ -72,12 +72,12 @@ impl ezsockets::ClientExt for WSClient {
         &mut self,
         frame: Option<CloseFrame>,
     ) -> Result<ClientCloseMode, ezsockets::Error> {
-        error!("DEEPGRAM connection CLOSE 💔 {frame:?}");
+        error!("Deepgram CONNECTION CLOSED | {frame:?}");
         Ok(ClientCloseMode::Reconnect)
     }
 
     async fn on_disconnect(&mut self) -> Result<ClientCloseMode, ezsockets::Error> {
-        error!("DEEPGRAM disconnect 💔");
+        error!("Deepgram disconnected");
         Ok(ClientCloseMode::Reconnect)
     }
 }
@@ -91,15 +91,18 @@ impl STT {
                 heartbeat: Duration::from_secs(11),
                 timeout: Duration::from_secs(30 * 60), // 30 minutes
                 heartbeat_ping_msg_fn: Arc::new(|_t: Duration| {
-                    RawMessage::Text(json!({
-                        "type": "KeepAlive",
-                    }).to_string())
+                    RawMessage::Text(
+                        json!({
+                            "type": "KeepAlive",
+                        })
+                        .to_string(),
+                    )
                 }),
             })
             .header("Authorization", &format!("Token {}", deepgram_api_key))
-            .query_parameter("model", "enhanced")
-            // .query_parameter("model", "nova-2-conversationalai")
+            .query_parameter("model", "nova-2-conversationalai")
             .query_parameter("smart_format", "true")
+            .query_parameter("version", "latest")
             .query_parameter("filler_words", "true");
 
         let (ws_client, _) =

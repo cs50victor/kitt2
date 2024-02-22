@@ -96,7 +96,8 @@ pub fn run_llm(
                 .build()
                 .unwrap();
 
-            async_runtime.rt.block_on(async {
+            let rt = async_runtime.rt.clone();
+            rt.block_on(async {
                 let mut gpt_resp_stream =
                     llm_channel.client.chat().create_stream(request).await.unwrap();
                 while let Some(result) = gpt_resp_stream.next().await {

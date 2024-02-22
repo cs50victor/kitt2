@@ -12,7 +12,6 @@ use ezsockets::{
 use futures::StreamExt;
 use livekit::webrtc::{audio_frame::AudioFrame, audio_source::native::NativeAudioSource};
 use log::{error, info};
-use parking_lot::Mutex;
 use serde::Serialize;
 use serde_json::Value;
 use std::{
@@ -62,7 +61,6 @@ struct RegularMessage {
 pub struct TTS {
     ws_client: Client<WSClient>,
     pub started: Arc<AtomicBool>,
-    eleven_labs_api_key: String,
 }
 
 impl TTS {
@@ -95,14 +93,9 @@ impl ezsockets::ClientExt for WSClient {
         if base64_audio != Value::Null {
             let data = std::borrow::Cow::from(decode_base64_audio(base64_audio.as_str().unwrap())?);
 
-            const FRAME_DURATION: Duration = Duration::from_millis(500); // Write 0.5s of audio at a time
-            let ms = FRAME_DURATION.as_millis() as u32;
-
             let num_channels = self.audio_src.num_channels();
             let sample_rate = self.audio_src.sample_rate();
             let samples_per_channel = 1_u32;
-
-            let num_samples = (sample_rate / 1000 * ms) as usize;
 
             let audio_frame = AudioFrame { data, num_channels, sample_rate, samples_per_channel };
 
@@ -184,7 +177,7 @@ impl TTS {
                     )
                 }),
             })
-            .header("xi-api-key", eleven_labs_api_key.clone());
+            .header("xi-api-key", eleven_labs_api_key);
 
         let (ws_client, _) = ezsockets::connect(
             |_client| WSClient { audio_src, tts_ws_started: started.clone() },
@@ -199,10 +192,10 @@ impl TTS {
             generation_config: GenerationConfig { chunk_length_schedule: [50] },
         })?)?;
 
-        Ok(Self { ws_client, started, eleven_labs_api_key })
+        Ok(Self { ws_client, started })
     }
 
-    pub fn start(&mut self) -> anyhow::Result<()> {
+    pub fn restart(&mut self) -> anyhow::Result<()> {
         self.started.store(true, Ordering::Relaxed);
         self.send(" ".to_string())?;
         Ok(())
@@ -225,7 +218,7 @@ impl TTS {
         let msg = msg?;
 
         if !self.started.load(Ordering::Relaxed) {
-            self.start()?;
+            self.restart()?;
         }
 
         info!("sending to eleven labs {msg}");
