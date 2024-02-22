@@ -2,13 +2,6 @@ name: CI-TS
 
 on:
   push:
-    paths:
-      - "**/meet/**"
-      - "**/ci-ts.yml"
-      - "**/.eslintrc.json"
-      - "**/.node-version"
-      - "**/package.json"
-      - "**/pnpm-lock.yaml"
   workflow_dispatch:
 
 env:
@@ -37,5 +30,11 @@ jobs:
         run: bun install --ignore-scripts
 
       #  Errors out on build when separated into multiple steps
-      - name: Install, Build, and Lint Meet
-        run: cd meet && bun install --ignore-scripts && bun run build && bun run lint
+      - name: Install
+        run: bun install --ignore-scripts
+      
+      - name: Build
+        run: bun run build
+      
+      - name: Lint
+        run: bun run lint
