@@ -1,5 +1,0 @@
-[alias]
-rr = "run --release"
-
-[target.aarch64-apple-darwin]
-rustflags = ["-C", "link-args=-ObjC"]

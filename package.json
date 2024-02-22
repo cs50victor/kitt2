@@ -1,34 +1,60 @@
 {
-  "name": "kitt_2",
-  "version": "1.0.0",
-  "description": "",
-  "scripts": {
-    "prepare": "husky install",
-    "build": "pnpm --dir=meet build",
-    "dev": "concurrently --names 'WEB,SERVER' -c 'auto' \"pnpm --dir=meet dev\" \"cargo rr --bin lkgpt\"",
-    "format": "concurrently --names 'fmt:web,fmt:rs,fmt:toml' -c 'auto' \"pnpm format:prettier\" \"pnpm format:rs\" \"pnpm format:toml\"",
-    "format:prettier": "prettier --write \"**/*.{js,ts,tsx}\"",
-    "format:rs": "cargo fmt --all",
-    "format:toml": "taplo format",
-    "pre-commit": "lint-staged"
-  },
+  "name": "kitt2",
+  "version": "0.2.0",
+  "private": true,
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "prepare": "husky install",
+    "dev:all": "concurrently --names 'WEB,SERVER' -c 'auto' \"pnpm dev\" \"python my_agent.py start\"",
+    "format:prettier": "prettier --write \"**/*.{js,ts,tsx}\"",
+    "pre-commit": "lint-staged"
+  },
+  "dependencies": {
+    "@livekit/components-react": "1.5.1",
+    "@livekit/components-styles": "1.0.8",
+    "@radix-ui/react-slot": "^1.0.2",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.0",
+    "framer-motion": "^11.0.5",
+    "js-yaml": "^4.1.0",
+    "livekit-client": "1.15.8",
+    "livekit-server-sdk": "1.2.7",
+    "next": "14.0.4",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "tailwind-merge": "^2.2.0",
+    "tinykeys": "^2.1.0"
+  },
   "devDependencies": {
+    "@headlessui/tailwindcss": "^0.2.0",
+    "@tailwindcss/aspect-ratio": "^0.4.2",
+    "@tailwindcss/forms": "^0.5.7",
+    "@tailwindcss/typography": "^0.5.10",
     "@taplo/cli": "^0.5.2",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "20.10.8",
+    "@types/react": "18.2.47",
+    "@types/react-dom": "18.2.18",
+    "autoprefixer": "^10.4.16",
     "concurrently": "^8.2.2",
+    "env-cmd": "^10.1.0",
+    "eslint": "8.56.0",
+    "eslint-config-next": "14.0.4",
     "husky": "^8.0.3",
     "lint-staged": "^15.2.0",
-    "prettier": "^3.1.1"
+    "postcss": "^8.4.33",
+    "prettier": "^3.1.1",
+    "tailwindcss": "^3.4.1",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "5.3.3"
   },
   "lint-staged": {
-    "*.rs": [
-      "cargo fmt --"
-    ],
-    "*.toml": [
-      "taplo format"
-    ],
     "*.{js,ts,tsx}": [
       "eslint --ext jsx,ts,tsx --quiet --fix --",
       "prettier --write"
@@ -39,7 +65,7 @@
   },
   "packageManager": "pnpm@8.7.6",
   "engines": {
-    "node": "20.x",
+    "node": ">=18",
     "pnpm": "8"
   }
 }
