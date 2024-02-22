@@ -1,4 +1,3 @@
-use anyhow::bail;
 use async_trait::async_trait;
 use base64::{
     engine::general_purpose::{self},
@@ -13,10 +12,15 @@ use ezsockets::{
 use futures::StreamExt;
 use livekit::webrtc::{audio_frame::AudioFrame, audio_source::native::NativeAudioSource};
 use log::{error, info};
-use parking_lot::Mutex;
 use serde::Serialize;
 use serde_json::Value;
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use std::io::Cursor;
 
@@ -55,14 +59,18 @@ struct RegularMessage {
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Resource)]
 pub struct TTS {
-    ws_client: Option<Client<WSClient>>,
-    pub started: bool,
-    eleven_labs_api_key: String,
+    ws_client: Client<WSClient>,
+    pub started: Arc<AtomicBool>,
+}
+
+impl TTS {
+    pub const NUM_OF_CHANNELS: u32 = 1;
+    pub const SAMPLE_RATE: u32 = 44100;
 }
 
 struct WSClient {
     audio_src: NativeAudioSource,
-    tts_client_ref: Arc<Mutex<TTS>>,
+    tts_ws_started: Arc<AtomicBool>,
 }
 
 fn decode_base64_audio(base64_audio: &str) -> anyhow::Result<Vec<i16>> {
@@ -83,22 +91,17 @@ impl ezsockets::ClientExt for WSClient {
 
         info!("incoming speech from eleven labs");
         if base64_audio != Value::Null {
-            let data = decode_base64_audio(base64_audio.as_str().unwrap())?;
-
-            const FRAME_DURATION: Duration = Duration::from_millis(500); // Write 0.5s of audio at a time
-            let ms = FRAME_DURATION.as_millis() as u32;
+            let data = std::borrow::Cow::from(decode_base64_audio(base64_audio.as_str().unwrap())?);
 
             let num_channels = self.audio_src.num_channels();
             let sample_rate = self.audio_src.sample_rate();
-            let num_samples = (sample_rate / 1000 * ms) as usize;
-            let samples_per_channel = num_samples as u32;
+            let samples_per_channel = 1_u32;
 
-            let audio_frame =
-                AudioFrame { data: data.into(), num_channels, sample_rate, samples_per_channel };
+            let audio_frame = AudioFrame { data, num_channels, sample_rate, samples_per_channel };
 
             self.audio_src.capture_frame(&audio_frame).await?;
         } else {
-            error!("received null message from eleven labs: {text:?}");
+            error!("received null audio from eleven labs: {text:?}");
         }
 
         Ok(())
@@ -116,8 +119,7 @@ impl ezsockets::ClientExt for WSClient {
     }
 
     async fn on_connect(&mut self) -> Result<(), ezsockets::Error> {
-        let mut tts = self.tts_client_ref.lock();
-        tts.started = true;
+        self.tts_ws_started.store(true, Ordering::Relaxed);
         info!("ELEVEN LABS CONNECTED 🎉");
         Ok(())
     }
@@ -126,7 +128,7 @@ impl ezsockets::ClientExt for WSClient {
         &mut self,
         _error: WSError,
     ) -> Result<ClientCloseMode, ezsockets::Error> {
-        info!("ELEVEN LABS connection FAIL");
+        error!("ELEVEN LABS connection FAIL");
         Ok(ClientCloseMode::Reconnect)
     }
 
@@ -134,36 +136,22 @@ impl ezsockets::ClientExt for WSClient {
         &mut self,
         _frame: Option<CloseFrame>,
     ) -> Result<ClientCloseMode, ezsockets::Error> {
-        info!("ELEVEN LABS connection CLOSE");
-        let mut tts = self.tts_client_ref.lock();
-        tts.started = false;
+        error!("ELEVEN LABS connection CLOSE");
+        self.tts_ws_started.store(false, Ordering::Relaxed);
         Ok(ClientCloseMode::Reconnect)
     }
 
     async fn on_disconnect(&mut self) -> Result<ClientCloseMode, ezsockets::Error> {
-        info!("ELEVEN LABS disconnect");
+        error!("ELEVEN LABS disconnected");
         Ok(ClientCloseMode::Reconnect)
     }
 }
 
 impl TTS {
-    pub fn new() -> anyhow::Result<Self> {
+    pub async fn new(audio_src: NativeAudioSource) -> anyhow::Result<Self> {
         let eleven_labs_api_key = std::env::var(ELEVENLABS_API_KEY).unwrap();
+        let started = Arc::new(AtomicBool::new(true));
 
-        Ok(Self { ws_client: None, started: false, eleven_labs_api_key })
-    }
-
-    pub async fn setup_ws_client(&mut self, audio_src: NativeAudioSource) -> anyhow::Result<()> {
-        let ws_client = self.connect_ws_client(audio_src).await?;
-        self.started = true;
-        self.ws_client = Some(ws_client);
-        Ok(())
-    }
-
-    async fn connect_ws_client(
-        &self,
-        audio_src: NativeAudioSource,
-    ) -> anyhow::Result<Client<WSClient>> {
         let voice_id = "21m00Tcm4TlvDq8ikWAM";
         let model = "eleven_turbo_v2";
 
@@ -189,10 +177,10 @@ impl TTS {
                     )
                 }),
             })
-            .header("xi-api-key", &self.eleven_labs_api_key);
+            .header("xi-api-key", eleven_labs_api_key);
 
         let (ws_client, _) = ezsockets::connect(
-            |_client| WSClient { audio_src, tts_client_ref: Arc::new(Mutex::new(self.clone())) },
+            |_client| WSClient { audio_src, tts_ws_started: started.clone() },
             config,
         )
         .await;
@@ -203,11 +191,12 @@ impl TTS {
             voice_settings: VoiceSettings { stability: 0.8, similarity_boost: true },
             generation_config: GenerationConfig { chunk_length_schedule: [50] },
         })?)?;
-        Ok(ws_client)
+
+        Ok(Self { ws_client, started })
     }
 
-    pub fn start(&mut self) -> anyhow::Result<()> {
-        self.started = true;
+    pub fn restart(&mut self) -> anyhow::Result<()> {
+        self.started.store(true, Ordering::Relaxed);
         self.send(" ".to_string())?;
         Ok(())
     }
@@ -228,31 +217,12 @@ impl TTS {
         };
         let msg = msg?;
 
-        if !self.started {
-            self.start()?;
-        }
-
-        if self.ws_client.as_ref().is_none() {
-            bail!("ws_client is none");
+        if !self.started.load(Ordering::Relaxed) {
+            self.restart()?;
         }
 
         info!("sending to eleven labs {msg}");
 
-        Ok(self.ws_client.as_ref().unwrap().text(msg)?.status())
+        Ok(self.ws_client.text(msg)?.status())
     }
-}
-
-impl Drop for TTS {
-    fn drop(&mut self) {
-        info!("DROPPING TTS");
-        if let Err(e) = self.send("".to_owned()) {
-            error!("Error shutting down TTS  / Eleven Labs connection | Reason - {e}");
-        };
-    }
-}
-
-pub async fn create_tts(audio_src: NativeAudioSource) -> anyhow::Result<TTS> {
-    let mut tts = TTS::new()?;
-    tts.setup_ws_client(audio_src).await?;
-    Ok(tts)
 }

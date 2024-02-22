@@ -2,6 +2,7 @@
 mod controls;
 mod frame_capture;
 mod llm;
+mod room_events;
 mod server;
 mod stt;
 mod tts;
@@ -12,9 +13,8 @@ use std::sync::{
     Arc,
 };
 
-use chrono::Utc;
 use frame_capture::scene::SceneController;
-use image::{ImageBuffer, Rgb, RgbaImage};
+use image::RgbaImage;
 use livekit::{publication::LocalTrackPublication, webrtc::video_frame::VideoBuffer, Room};
 // use actix_web::{middleware, web::Data, App, HttpServer};
 use log::info;
@@ -32,14 +32,14 @@ use livekit::{
 
 use bevy::{
     app::ScheduleRunnerPlugin, core::Name, core_pipeline::tonemapping::Tonemapping, log::LogPlugin,
-    prelude::*, render::renderer::RenderDevice, time::common_conditions::on_timer,
+    prelude::*, render::renderer::RenderDevice, tasks::AsyncComputeTaskPool,
+    time::common_conditions::on_timer,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
 use bevy_gaussian_splatting::{GaussianCloud, GaussianSplattingBundle, GaussianSplattingPlugin};
 
 use pollster::FutureExt;
-use stt::{receive_and_process_audio, STT};
 
 use futures::StreamExt;
 use livekit::{
@@ -48,12 +48,13 @@ use livekit::{
     DataPacketKind, RoomEvent,
 };
 use log::{error, warn};
+use rodio::cpal::Sample as _;
 use serde::{Deserialize, Serialize};
-use video::ReceivedVideoFrame;
+use stt::STT;
 
 use crate::{
-    controls::WorldControlChannel, llm::LLMChannel, server::RoomData, stt::AudioInputChannel,
-    tts::create_tts, video::VideoChannel,
+    controls::WorldControlChannel, llm::LLMChannel, room_events::handle_room_events,
+    server::RoomData, tts::TTS, video::VideoChannel,
 };
 
 pub const LIVEKIT_API_SECRET: &str = "LIVEKIT_API_SECRET";
@@ -71,7 +72,8 @@ pub struct AsyncRuntime {
 impl FromWorld for AsyncRuntime {
     fn from_world(_world: &mut World) -> Self {
         let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
-        AsyncRuntime { rt: std::sync::Arc::new(rt) }
+
+        Self { rt: std::sync::Arc::new(rt) }
     }
 }
 
@@ -137,131 +139,9 @@ pub struct AppStateSync {
 
 #[derive(Resource)]
 pub struct LivekitRoom {
+    #[allow(dead_code)]
     room: std::sync::Arc<Room>,
     room_events: tokio::sync::mpsc::UnboundedReceiver<RoomEvent>,
-}
-
-// SYSTEM
-pub fn handle_room_events(
-    async_runtime: Res<AsyncRuntime>,
-    llm_channel: Res<llm::LLMChannel>,
-    audio_channel: Res<stt::AudioInputChannel>,
-    _video_channel: Res<video::VideoChannel>,
-    audio_syncer: ResMut<AudioSync>,
-    mut room_events: ResMut<LivekitRoom>,
-    single_frame_data: ResMut<crate::StreamingFrameData>,
-) {
-    while let Ok(event) = room_events.room_events.try_recv() {
-        println!("\n\n🤡received room event {:?}", event);
-        match event {
-            RoomEvent::TrackSubscribed { track, publication: _, participant: _user } => {
-                match track {
-                    RemoteTrack::Audio(audio_track) => {
-                        let audio_rtc_track = audio_track.rtc_track();
-                        let mut audio_stream = NativeAudioStream::new(audio_rtc_track);
-                        let audio_channel_tx = audio_channel.tx.clone();
-                        let audio_should_stop = audio_syncer.should_stop.clone();
-                        async_runtime.rt.spawn(async move {
-                            let mut start_time = Utc::now().time();
-                            let mut ms_audio_buffer: Vec<i16> = Vec::new();
-                            while let Some(frame) = audio_stream.next().await {
-                                if audio_should_stop.load(Ordering::Relaxed) {
-                                    continue;
-                                }
-                                ms_audio_buffer.extend_from_slice(&frame.data);
-                                let elapsed = (Utc::now().time() - start_time).num_milliseconds();
-                                // 10ms of audio
-                                if elapsed >= 10 {
-                                    if let Err(e) = audio_channel_tx.send(frame.data.to_vec()) {
-                                        log::error!("Couldn't send audio frame to stt {e}");
-                                    };
-                                    start_time = Utc::now().time();
-                                }
-                            }
-                        });
-                    },
-                    RemoteTrack::Video(video_track) => {
-                        let video_rtc_track = video_track.rtc_track();
-                        let pixel_size = 4;
-                        let mut video_stream = NativeVideoStream::new(video_rtc_track);
-
-                        async_runtime.rt.spawn(async move {
-                            // every 10 video frames
-                            let mut i = 0;
-                            while let Some(frame) = video_stream.next().await {
-                                log::error!("🤡received video frame | {:#?}", frame);
-                                // VIDEO FRAME BUFFER (i420_buffer)
-                                let video_frame_buffer = frame.buffer.to_i420();
-                                let width = video_frame_buffer.width();
-                                let height = video_frame_buffer.height();
-                                let rgba_stride = video_frame_buffer.width() * pixel_size;
-
-                                let (stride_y, stride_u, stride_v) = video_frame_buffer.strides();
-                                let (data_y, data_u, data_v) = video_frame_buffer.data();
-
-                                let rgba_buffer = RgbaImage::new(width, height);
-                                let rgba_raw = unsafe {
-                                    std::slice::from_raw_parts_mut(
-                                        rgba_buffer.as_raw().as_ptr() as *mut u8,
-                                        rgba_buffer.len(),
-                                    )
-                                };
-
-                                livekit::webrtc::native::yuv_helper::i420_to_rgba(
-                                    data_y,
-                                    stride_y,
-                                    data_u,
-                                    stride_u,
-                                    data_v,
-                                    stride_v,
-                                    rgba_raw,
-                                    rgba_stride,
-                                    video_frame_buffer.width() as i32,
-                                    video_frame_buffer.height() as i32,
-                                );
-
-                                if let Err(e) = rgba_buffer.save(format!("camera/{i}.png")) {
-                                    log::error!("Couldn't save video frame {e}");
-                                };
-                                i += 1;
-                            }
-                            info!("🤡ended video thread");
-                        });
-                    },
-                };
-            },
-            RoomEvent::DataReceived { payload, kind, topic: _, participant: _ } => {
-                if kind == DataPacketKind::Reliable {
-                    if let Some(payload) = payload.as_ascii() {
-                        let room_text: serde_json::Result<RoomText> =
-                            serde_json::from_str(payload.as_str());
-                        match room_text {
-                            Ok(room_text) => {
-                                if let Err(e) =
-                                    llm_channel.tx.send(format!("[chat]{} ", room_text.message))
-                                {
-                                    error!("Couldn't send the text to gpt {e}")
-                                };
-                            },
-                            Err(e) => {
-                                warn!("Couldn't deserialize room text. {e:#?}");
-                            },
-                        }
-
-                        info!("text from room {:#?}", payload.as_str());
-                    }
-                }
-            },
-            // ignoring the participant for now, currently assuming there is only one participant
-            RoomEvent::TrackMuted { participant: _, publication: _ } => {
-                audio_syncer.should_stop.store(true, Ordering::Relaxed);
-            },
-            RoomEvent::TrackUnmuted { participant: _, publication: _ } => {
-                audio_syncer.should_stop.store(false, Ordering::Relaxed);
-            },
-            _ => info!("received room event {:?}", event),
-        }
-    }
 }
 
 pub struct TracksPublicationData {
@@ -278,8 +158,8 @@ pub async fn publish_tracks(
 ) -> Result<TracksPublicationData, RoomError> {
     let audio_src = NativeAudioSource::new(
         AudioSourceOptions::default(),
-        STT::SAMPLE_RATE,
-        STT::NUM_OF_CHANNELS,
+        TTS::SAMPLE_RATE,
+        TTS::NUM_OF_CHANNELS,
     );
 
     let audio_track =
@@ -325,7 +205,7 @@ fn setup_gaussian_cloud(
 ) {
     // let remote_file = Some("https://huggingface.co/datasets/cs50victor/splats/resolve/main/train/point_cloud/iteration_7000/point_cloud.gcloud");
     // TODO: figure out how to load remote files later
-    let splat_file = "splats/train/point_cloud/iteration_7000/point_cloud.gcloud";
+    let splat_file = "splats/bonsai/point_cloud/iteration_7000/point_cloud.gcloud";
     log::info!("loading {}", splat_file);
     let cloud = asset_server.load(splat_file.to_string());
 
@@ -340,11 +220,16 @@ fn setup_gaussian_cloud(
         String::from("main_scene"),
     );
 
-    commands.spawn((GaussianSplattingBundle { cloud, ..default() }, Name::new("gaussian_cloud")));
+    let gs = GaussianSplattingBundle { cloud, ..default() };
+    commands.spawn((gs, Name::new("gaussian_cloud")));
 
     commands.spawn((
         Camera3dBundle {
-            transform: Transform::from_translation(Vec3::new(0.0, 1.5, 5.0)),
+            transform: Transform {
+                translation: Vec3::new(-0.59989005, -0.88360703, -2.0863006),
+                rotation: Quat::from_xyzw(-0.97177905, -0.026801618, 0.13693734, -0.1901983),
+                scale: Vec3::new(1.0, 1.0, 1.0),
+            },
             tonemapping: Tonemapping::None,
             camera: Camera { target: render_target, ..default() },
             ..default()
@@ -365,6 +250,7 @@ pub fn sync_bevy_and_server_resources(
     mut server_state_clone: ResMut<AppStateSync>,
     mut set_app_state: ResMut<NextState<AppState>>,
     scene_controller: Res<SceneController>,
+    audio_syncer: Res<AudioSync>,
 ) {
     if !server_state_clone.dirty {
         let participant_room_name = &(server_state_clone.state.lock().0).clone();
@@ -382,23 +268,53 @@ pub fn sync_bevy_and_server_resources(
                         livekit_room,
                         stream_frame_data,
                         audio_src,
+                        bot_name: _,
                         video_pub: _,
                         audio_pub: _,
                     } = room_data;
 
                     info!("initializing required bevy resources");
-                    let tts = async_runtime.rt.block_on(create_tts(audio_src)).unwrap();
 
-                    commands.init_resource::<LLMChannel>();
+                    let llm_channel = LLMChannel::new();
+                    let llm_tx = llm_channel.tx.clone();
+                    let llm_channel_tx = llm_tx.clone();
+
+                    let tts = async_runtime.rt.block_on(TTS::new(audio_src)).unwrap();
+                    let stt = async_runtime.rt.block_on(STT::new(llm_tx)).unwrap();
+
+                    let video_channel = VideoChannel::new();
+                    commands.insert_resource(llm_channel);
                     commands.init_resource::<WorldControlChannel>();
-                    commands.init_resource::<AudioInputChannel>();
-                    commands.init_resource::<STT>();
+
+                    commands.insert_resource(stt.clone());
+
                     commands.init_resource::<VideoChannel>();
                     commands.insert_resource(tts);
                     commands.insert_resource(stream_frame_data);
-                    commands.insert_resource(livekit_room);
+                    // commands.insert_resource(livekit_room);
 
                     set_app_state.set(AppState::Active);
+
+                    let audio_syncer = audio_syncer.should_stop.clone();
+                    let rt = async_runtime.rt.clone();
+                    async_runtime.rt.spawn(handle_room_events(
+                        rt,
+                        llm_channel_tx,
+                        stt,
+                        video_channel,
+                        audio_syncer,
+                        livekit_room,
+                        4,
+                    ));
+                    /*
+                    async_runtime: Res<AsyncRuntime>,
+                    llm_channel: Res<llm::LLMChannel>,
+                    stt_client: ResMut<STT>,
+                    _video_channel: Res<video::VideoChannel>,
+                    audio_syncer: ResMut<AudioSync>,
+                    mut room_events: ResMut<LivekitRoom>,
+                    single_frame_data: ResMut<crate::StreamingFrameData>,
+                    */
                     server_state_clone.dirty = true;
                 },
                 Err(e) => {
@@ -443,7 +359,6 @@ fn main() {
 
     let config = AppConfig { width: 1920, height: 1080 };
 
-    // setup frame capture
     app.insert_resource(frame_capture::scene::SceneController::new(config.width, config.height));
     app.insert_resource(ClearColor(Color::rgb_u8(0, 0, 0)));
 
@@ -473,25 +388,19 @@ fn main() {
     app.init_resource::<frame_capture::scene::SceneController>();
     app.add_event::<frame_capture::scene::SceneController>();
 
-    // app.add_systems(Update, move_camera);
+    app.add_systems(Update, move_camera);
 
     app.add_systems(Update, server::shutdown_bevy_remotely);
 
-    app.add_systems(
-        Update,
-        handle_room_events
-            .run_if(resource_exists::<llm::LLMChannel>())
-            .run_if(resource_exists::<stt::AudioInputChannel>())
-            .run_if(resource_exists::<video::VideoChannel>())
-            .run_if(resource_exists::<LivekitRoom>()),
-    );
-    app.add_systems(
-        Update,
-        receive_and_process_audio
-            .run_if(resource_exists::<stt::AudioInputChannel>())
-            .run_if(resource_exists::<llm::LLMChannel>())
-            .run_if(resource_exists::<STT>()),
-    );
+    // app.add_systems(
+    //     Update,
+    //     room_events::handle_room_events
+    //         .run_if(resource_exists::<llm::LLMChannel>())
+    //         .run_if(resource_exists::<stt::STT>())
+    //         .run_if(resource_exists::<video::VideoChannel>())
+    //         .run_if(resource_exists::<LivekitRoom>()),
+    // );
+
     app.add_systems(
         Update,
         llm::run_llm
@@ -512,6 +421,8 @@ fn main() {
 
 fn move_camera(mut camera: Query<&mut Transform, With<Camera>>) {
     for mut transform in camera.iter_mut() {
-        transform.translation.x += 5.0;
+        transform.translation.x += 0.0005;
+        transform.translation.y += 0.0005;
+        transform.translation.z += 0.0005;
     }
 }

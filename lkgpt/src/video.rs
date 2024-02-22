@@ -16,10 +16,15 @@ pub struct VideoChannel {
     rx: crossbeam_channel::Receiver<Vec<i16>>,
 }
 
-impl FromWorld for VideoChannel {
-    fn from_world(_: &mut World) -> Self {
+impl Default for VideoChannel {
+    fn default() -> Self {
         let (tx, rx) = crossbeam_channel::unbounded::<Vec<i16>>();
         Self { tx, rx }
+    }
+}
+impl VideoChannel {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 

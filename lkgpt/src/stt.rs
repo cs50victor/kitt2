@@ -1,132 +1,118 @@
-use bevy::ecs::{
-    system::{Res, ResMut, Resource},
-    world::{FromWorld, World},
+use async_trait::async_trait;
+use bevy::ecs::system::Resource;
+use bytes::{BufMut, Bytes, BytesMut};
+use deepgram::Deepgram;
+use ezsockets::{
+    client::ClientCloseMode, Client, ClientConfig, CloseFrame, MessageSignal, MessageStatus,
+    RawMessage, SocketConfig, WSError,
 };
-use deepgram::{
-    transcription::live::{
-        options::{Encoding, Model, Options},
-        response::Response,
-        DeepgramLive,
-    },
-    Deepgram,
+use futures::StreamExt;
+use livekit::webrtc::audio_stream::native::NativeAudioStream;
+use log::{error, info};
+use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
 };
-use futures::{stream::SplitSink, SinkExt, StreamExt};
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{AsyncRuntime, DEEPGRAM_API_KEY};
 
-#[derive(Resource)]
-pub struct AudioInputChannel {
-    pub tx: crossbeam_channel::Sender<Vec<i16>>,
-    rx: crossbeam_channel::Receiver<Vec<i16>>,
-}
-
-impl FromWorld for AudioInputChannel {
-    fn from_world(_: &mut World) -> Self {
-        let (tx, rx) = crossbeam_channel::unbounded::<Vec<i16>>();
-        Self { tx, rx }
-    }
-}
-
-/// Live Speech To Text using Deepgram's Websocket API
-#[allow(clippy::upper_case_acronyms)]
-#[derive(Resource)]
+#[derive(Clone, Resource)]
 pub struct STT {
-    tx: SplitSink<DeepgramLive, Vec<u8>>,
-    rx: crossbeam_channel::Receiver<String>,
+    ws_client: Arc<Client<WSClient>>,
+}
+
+struct WSClient {
+    llm_channel_tx: crossbeam_channel::Sender<String>,
+}
+
+#[async_trait]
+impl ezsockets::ClientExt for WSClient {
+    type Call = ();
+
+    async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> {
+        let data: Value = serde_json::from_str(&text)?;
+        let transcript = data["channel"]["alternatives"][0]["transcript"].clone();
+
+        if transcript != Value::Null {
+            info!("🎉 from deepgram {transcript}");
+            if let Err(e) = self.llm_channel_tx.send(transcript.to_string()) {
+                error!("Error sending to LLM: {}", e);
+            };
+        }
+
+        Ok(())
+    }
+
+    async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
+        info!("received bytes from deepgram: {bytes:?}");
+        Ok(())
+    }
+
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
+        info!("Deepgram ON CALL: {call:?}");
+        let () = call;
+        Ok(())
+    }
+
+    async fn on_connect(&mut self) -> Result<(), ezsockets::Error> {
+        info!("Deepgram CONNECTED 🎉");
+        Ok(())
+    }
+
+    async fn on_connect_fail(&mut self, e: WSError) -> Result<ClientCloseMode, ezsockets::Error> {
+        error!("Deepgram CONNECTION FAILED | {e}");
+        Ok(ClientCloseMode::Reconnect)
+    }
+
+    async fn on_close(
+        &mut self,
+        frame: Option<CloseFrame>,
+    ) -> Result<ClientCloseMode, ezsockets::Error> {
+        error!("Deepgram CONNECTION CLOSED | {frame:?}");
+        Ok(ClientCloseMode::Reconnect)
+    }
+
+    async fn on_disconnect(&mut self) -> Result<ClientCloseMode, ezsockets::Error> {
+        error!("Deepgram disconnected");
+        Ok(ClientCloseMode::Reconnect)
+    }
 }
 
 impl STT {
-    pub const LATENCY_FRAMES: f32 = (Self::LATENCY_MS / 1_000.0) * Self::SAMPLE_RATE_F32;
-    // Uses a delay of `LATENCY_MS` milliseconds in case the default input and output streams are not precisely synchronised
-    pub const LATENCY_MS: f32 = 5000.0;
-    pub const LATENCY_SAMPLES: u32 = Self::LATENCY_FRAMES as u32 * Self::NUM_OF_CHANNELS;
-    const MIN_AUDIO_MS_CHUNK: u64 = 25;
-    pub const NUM_ITERS: usize = 2;
-    pub const NUM_ITERS_SAVED: usize = 2;
-    pub const NUM_OF_CHANNELS: u32 = 1;
-    pub const SAMPLE_RATE: u32 = 44100;
-    //1600
-    pub const SAMPLE_RATE_F32: f32 = Self::SAMPLE_RATE as f32;
-    pub const SAMPLING_FREQ: f32 = Self::SAMPLE_RATE_F32 / 2.0;
-}
+    pub async fn new(llm_channel_tx: crossbeam_channel::Sender<String>) -> anyhow::Result<Self> {
+        let deepgram_api_key = std::env::var(DEEPGRAM_API_KEY).unwrap();
 
-impl FromWorld for STT {
-    fn from_world(world: &mut World) -> Self {
-        let async_rt = world.get_resource::<AsyncRuntime>().unwrap();
+        let config = ClientConfig::new("wss://api.deepgram.com/v1/listen")
+            .socket_config(SocketConfig {
+                heartbeat: Duration::from_secs(11),
+                timeout: Duration::from_secs(30 * 60), // 30 minutes
+                heartbeat_ping_msg_fn: Arc::new(|_t: Duration| {
+                    RawMessage::Text(
+                        json!({
+                            "type": "KeepAlive",
+                        })
+                        .to_string(),
+                    )
+                }),
+            })
+            .header("Authorization", &format!("Token {}", deepgram_api_key))
+            .query_parameter("model", "nova-2-conversationalai")
+            .query_parameter("smart_format", "true")
+            .query_parameter("version", "latest")
+            .query_parameter("filler_words", "true");
 
-        let ws = match async_rt.rt.block_on(async { connect_to_deepgram().await }) {
-            Ok(ws) => ws,
-            Err(e) => panic!("Failed to connect to Deepgram: {}", e),
-        };
+        let (ws_client, _) =
+            ezsockets::connect(|_client| WSClient { llm_channel_tx }, config).await;
 
-        let (ws_tx, mut socket_stream) = ws.split();
-
-        // let k = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>
-        let (tx, rx) = crossbeam_channel::unbounded();
-
-        async_rt.rt.spawn(async move {
-            while let Some(Ok(resp)) = socket_stream.next().await {
-                match resp {
-                    Response::Results(result) => {
-                        let txt = result.channel.alternatives[0].transcript.clone();
-                        if let Err(e) = tx.send(txt) {
-                            log::error!("Failed to send transcribed text: {}", e);
-                        };
-                    },
-                    Response::Metadata(metadata) => {
-                        log::info!("STT metadata from deepgram : {:?}", metadata);
-                    },
-                }
-            }
-        });
-
-        log::info!("Connected to Deepgram");
-        Self { tx: ws_tx, rx }
-    }
-}
-
-async fn connect_to_deepgram() -> anyhow::Result<DeepgramLive> {
-    let deepgram_api_key = std::env::var(DEEPGRAM_API_KEY).unwrap();
-
-    let dg_client = Deepgram::new(&deepgram_api_key)?;
-    let options = Options::builder()
-        .model(Model::CustomId("nova-2-conversationalai".to_string()))
-        .encoding_with_channels(
-            Encoding::Linear16,
-            STT::SAMPLE_RATE as usize,
-            STT::NUM_OF_CHANNELS as usize,
-        )
-        .punctuate(true)
-        .version("latest")
-        .build();
-
-    // ("smart_format", "true"),
-    // ("filler_words", "true"),
-
-    let deepgram_socket = dg_client.transcription().live(&options).await?;
-
-    Ok(deepgram_socket)
-}
-
-// SYSTEM
-pub fn receive_and_process_audio(
-    audio_channel: Res<AudioInputChannel>,
-    llm_channel: Res<crate::llm::LLMChannel>,
-    mut stt_websocket: ResMut<STT>,
-    async_runtime: Res<AsyncRuntime>,
-) {
-    while let Ok(audio_buffer) = audio_channel.rx.try_recv() {
-        log::info!("receiving audio");
-        let sample_bytes =
-            audio_buffer.into_iter().flat_map(|sample| sample.to_le_bytes()).collect::<Vec<u8>>();
-
-        let _ = async_runtime.rt.block_on(async { stt_websocket.tx.send(sample_bytes).await });
+        Ok(Self { ws_client: Arc::new(ws_client) })
     }
 
-    while let Ok(message) = stt_websocket.rx.try_recv() {
-        log::info!("transcribed text: {}", message);
-        if let Err(e) = llm_channel.tx.send(message) {
-            log::error!("Failed to send transcribed text: {}", e);
-        };
+    pub fn send(&self, bytes: impl Into<Vec<u8>>) -> anyhow::Result<MessageStatus> {
+        let signal = self.ws_client.binary(bytes)?;
+        Ok(signal.status())
     }
 }

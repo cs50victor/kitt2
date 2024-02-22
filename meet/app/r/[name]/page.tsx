@@ -32,12 +32,14 @@ export default function LivekitRoom({ params }: { params: { name: string } }) {
   }
 
   return (
-    <main data-lk-theme="default" className="h-screen">
+    <main data-lk-theme="default">
       {roomName && !Array.isArray(roomName) && preJoinChoices ? (
-        <ActiveRoom roomName={roomName} userChoices={preJoinChoices} />
+        <div className="h-screen">
+          <ActiveRoom roomName={roomName} userChoices={preJoinChoices} />
+        </div>
       ) : (
-        <div className="flex flex-col justify-center items-center h-full">
-          <h1 className="text-4xl font-semibold font-display text-brand">Kitt2</h1>
+        <div className="flex flex-col justify-center items-center h-full min-h-dvh">
+          {/* <h1 className="text-4xl font-semibold font-display text-brand">Kitt2</h1> */}
           <PreJoinNoSSR
             className="p-4 rounded-xl w-full max-w-sm
             [&*.lk-camera-off-note]:bg-cyan-950
@@ -47,8 +49,8 @@ export default function LivekitRoom({ params }: { params: { name: string } }) {
             [&*.lk-camera-off-note>svg]:stroke-black
             [&*.lk-camera-off-note>svg>path]:fill-gray-300
             [&*.lk-camera-off-note]:rounded-full
-            [&*.lk-camera-off-note]:aspect-w-4
-            [&*.lk-camera-off-note]:aspect-h-4
+            [&*.lk-camera-off-note]:aspect-w-2
+            [&*.lk-camera-off-note]:aspect-h-2
             [&*.lk-camera-off-note]:overflow-hidden
             [&*.lk-camera-off-note]:border
 
@@ -66,7 +68,7 @@ export default function LivekitRoom({ params }: { params: { name: string } }) {
             "
             onError={(err) => console.log('error while setting up prejoin', err)}
             defaults={{
-              username: 'human',
+              username: 'Pinkman',
               videoEnabled: false,
               audioEnabled: false,
               e2ee: true,
