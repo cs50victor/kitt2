@@ -1,7 +1,7 @@
 'use client';
 import { ChatMessage } from '~/components/ChatMessage';
 import { ChatMessageInput } from '~/components/ChatMessageInput';
-import { ChatMessage as ComponentsChatMessage } from '@livekit/components-react';
+import { ChatMessage as ComponentsChatMessage, useChat } from '@livekit/components-react';
 import { useEffect, useRef } from 'react';
 
 const inputHeight = 48;
@@ -16,7 +16,7 @@ export type ChatMessageType = {
 type ChatTileProps = {
   messages: ChatMessageType[];
   accentColor: string;
-  onSend?: (message: string) => Promise<ComponentsChatMessage>;
+  onSend?: ReturnType<typeof useChat>['send'];
 };
 
 export const ChatTile = ({ messages, accentColor, onSend }: ChatTileProps) => {
