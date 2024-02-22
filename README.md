@@ -1,17 +1,11 @@
 # KITT V2
 
-DEMO
+> Update: the graphics part (video rendering) of this project has been moved to [new media](https://github.com/cs50victor/new_media)
 
-https://github.com/cs50victor/kitt2/assets/52110451/ef2f8b61-6870-4e44-8718-0f92ef90cefc
+[![Preview Demo](https://i.stack.imgur.com/Vp2cE.png)](https://github.com/cs50victor/kitt2/assets/52110451/ef2f8b61-6870-4e44-8718-0f92ef90cefc)
+
+## Run Locally
 
 1. `pnpm i`
 2. `pnpm dev`
 3. `ngrok http http:://localhost:6669` ( in a different terminal )
-
-- stt ( deepgram )
-- tts ( eleven labs )
-
-### Credits
-
-- [Bevy Gaussian Splatting](https://github.com/mosure/bevy_gaussian_splatting) 🎖️
-- [Bevy Deepgram](https://github.com/deepgram-devs/bevy-deepgram)
