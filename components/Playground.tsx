@@ -52,11 +52,7 @@ export interface PlaygroundProps {
 const headerHeight = 56;
 
 export default function Playground({
-  logo,
-  title,
-  githubLink,
   outputs,
-  showQR,
   themeColors,
   defaultColor,
   onConnect,
@@ -327,7 +323,6 @@ export default function Playground({
     roomState,
     themeColor,
     themeColors,
-    showQR,
   ]);
 
   let mobileTabs: PlaygroundTab[] = [];

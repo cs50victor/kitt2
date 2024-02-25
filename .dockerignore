@@ -1,3 +1,2 @@
 *
-!llm.py
-!kitt.py
+!server/**.py

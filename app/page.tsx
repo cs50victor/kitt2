@@ -49,7 +49,7 @@ export default function Page() {
     setMetadata(md);
   }, [liveKitUrl, roomName, tokenOptions]);
 
-  const token = useToken('/api/token', roomName, tokenOptions);
+  const token = useToken('/api/get-participant-token', roomName, tokenOptions);
   const appConfig = useAppConfig();
   const outputs = [
     appConfig?.outputs.audio && PlaygroundOutputs.Audio,
@@ -58,6 +58,8 @@ export default function Page() {
   ].filter((item) => typeof item !== 'boolean') as PlaygroundOutputs[];
 
   const handleConnect = useCallback((connect: boolean, opts?: { url: string; token: string }) => {
+    console.log('connect', connect);
+    console.log('connect opts', opts);
     if (connect && opts) {
       setLiveKitUrl(opts.url);
     }
@@ -97,10 +99,7 @@ export default function Page() {
         }}
       >
         <Playground
-          title={appConfig?.title}
-          githubLink={appConfig?.github_link}
           outputs={outputs}
-          showQR={appConfig?.show_qr}
           themeColors={themeColors}
           defaultColor={appConfig?.theme_color ?? 'cyan'}
           onConnect={handleConnect}
@@ -114,6 +113,6 @@ export default function Page() {
   );
 }
 
-function createRoomName() {
+const createRoomName = () => {
   return [generateRandomAlphanumeric(4), generateRandomAlphanumeric(4)].join('-');
-}
+};
