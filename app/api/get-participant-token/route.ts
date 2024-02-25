@@ -10,7 +10,7 @@ import { TokenResult } from '~/utils/types';
 
 const apiKey = process.env.LIVEKIT_API_KEY;
 const apiSecret = process.env.LIVEKIT_API_SECRET;
-const livekitWsUrl = process.env.LIVEKIT_WS_URL;
+const livekitWsUrl = process.env.LIVEKIT_URL;
 
 const createToken = (userInfo: AccessTokenOptions, grant: VideoGrant) => {
   const at = new AccessToken(apiKey, apiSecret, userInfo);
@@ -19,12 +19,12 @@ const createToken = (userInfo: AccessTokenOptions, grant: VideoGrant) => {
   return at.toJwt();
 };
 
-const roomPattern = /\w{4}\-\w{4}\-\w{4}/;
+const roomPattern = /\w{4}\-\w{4}/;
 
 export async function GET(req: NextRequest) {
   const room = req.nextUrl.searchParams.get('roomName');
   const identity = req.nextUrl.searchParams.get('identity');
-  const name = req.nextUrl.searchParams.get('name');
+  const name = req.nextUrl.searchParams.get('name') ?? 'human';
   const metadata = req.nextUrl.searchParams.get('metadata');
 
   if (!room) {

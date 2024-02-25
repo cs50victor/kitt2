@@ -49,3 +49,9 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# python
+.cenv
+.venv
+venv/
+__pycache__
